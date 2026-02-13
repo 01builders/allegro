@@ -95,13 +95,13 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 
 ### Milestone 7: Transaction Builder (fastpay-user-client)
 
-- [ ] **7.1** Implement `TxBuilder` struct. (Ref: `A2`, `A7`)
-- [ ] **7.2** Implement `with_payment()` method (sender, recipient, amount, asset). (Ref: `A6`)
-- [ ] **7.3** Implement `with_nonce()` method (key selection, auto-increment). (Ref: `A7`, `A11`)
-- [ ] **7.4** Implement `with_expiry()` method (block height or timestamp). (Ref: `A6`)
-- [ ] **7.5** Implement `with_parent_qc()` method for chained spends. (Ref: `A2`, `A9`)
-- [ ] **7.6** Implement `build()` method with local validation. (Ref: `A6`, `A11`)
-- [ ] **7.7** Add unit tests for tx construction. (Ref: `A6`)
+- [x] **7.1** Implement `TxBuilder` struct. (Ref: `A2`, `A7`)
+- [x] **7.2** Implement `with_payment()` method (sender, recipient, amount, asset). (Ref: `A6`)
+- [x] **7.3** Implement `with_nonce()` method (key selection, auto-increment). (Ref: `A7`, `A11`)
+- [x] **7.4** Implement `with_expiry()` method (block height or timestamp). (Ref: `A6`)
+- [x] **7.5** Implement `with_parent_qc()` method for chained spends. (Ref: `A2`, `A9`)
+- [x] **7.6** Implement `build()` method with local validation. (Ref: `A6`, `A11`)
+- [x] **7.7** Add unit tests for tx construction. (Ref: `A6`)
 
 ### Milestone 8: Certificate Manager (fastpay-user-client)
 

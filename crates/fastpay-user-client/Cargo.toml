@@ -11,11 +11,13 @@ wasm = []
 
 [dependencies]
 async-trait.workspace = true
+fastpay-crypto = { path = "../fastpay-crypto" }
 fastpay-proto = { path = "../fastpay-proto" }
 fastpay-sidecar-mock = { path = "../fastpay-sidecar-mock" }
 fastpay-types = { path = "../fastpay-types" }
 futures.workspace = true
 rand.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

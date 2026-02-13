@@ -325,11 +325,13 @@ name = "fastpay-user-client"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "fastpay-crypto",
  "fastpay-proto",
  "fastpay-sidecar-mock",
  "fastpay-types",
  "futures",
  "rand",
+ "serde",
  "thiserror",
  "tokio",
  "tonic",
