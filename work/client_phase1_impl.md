@@ -64,7 +64,7 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 - [x] **4.11** Add cross-language vector harness (for example, TypeScript) for hash parity. (Ref: `A6`)
 - [x] **4.12** Add unit tests for all crypto operations. (Ref: `A2`, `A6`)
 - [x] **4.13** Verify WASM compatibility of crypto crate. (Ref: `A4`, `A5`)
-- [ ] **4.14** 🔖 **Git commit**: "Implement fastpay-crypto crate with ed25519 certificates and QC assembly"
+- [x] **4.14** 🔖 **Git commit**: "Implement fastpay-crypto crate with ed25519 certificates and QC assembly"
 
 ### Milestone 5: Transport Abstraction (fastpay-user-client)
 
