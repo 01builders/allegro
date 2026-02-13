@@ -1,0 +1,163 @@
+# FastPay User Client — Phase 1 Implementation Work Plan
+
+This file contains the executable task checklist for Phase 1.
+Architecture and protocol design are defined in `docs/user_client_phase1.md`.
+
+## Architecture References
+
+- `A1` -> `docs/user_client_phase1.md` / `### Crate Structure`, `**Dependency graph (layered)**`
+- `A2` -> `docs/user_client_phase1.md` / `#### 1. Trait Interfaces for Protocol Objects (Upgrade Path)`
+- `A3` -> `docs/user_client_phase1.md` / `#### 2. Transport Abstraction (WASM Compatibility)`
+- `A4` -> `docs/user_client_phase1.md` / `#### 3. Async Runtime Abstraction`
+- `A5` -> `docs/user_client_phase1.md` / `#### 4. Crypto Library Selection`
+- `A6` -> `docs/user_client_phase1.md` / `#### 5. Canonical Hashing and Encoding Rules`
+- `A7` -> `docs/user_client_phase1.md` / `#### 6. State Management`
+- `A8` -> `docs/user_client_phase1.md` / `## Mock Sidecar Design`, `### Mock Sidecar State`, `### Mock Validation Logic`
+- `A9` -> `docs/user_client_phase1.md` / `## Demo Scenario Implementation`
+- `A10` -> `docs/user_client_phase1.md` / `## Phase 2 Considerations (Not Implemented Yet)`
+- `A11` -> `docs/user_client_phase1.md` / `## Design Decisions`
+
+## Implementation Work Plan
+
+### Milestone 1: Project Setup & Workspace
+
+- [x] **1.1** Create workspace structure with crates (fastpay-types, fastpay-crypto, fastpay-proto, fastpay-user-client, fastpay-sidecar-mock). (Ref: `A1`)
+- [x] **1.2** Configure root Cargo.toml workspace with shared dependencies. (Ref: `A1`, `A5`)
+- [x] **1.3** Configure WASM feature flags across all crates. (Ref: `A4`)
+- [x] **1.4** Add wasm32-unknown-unknown to rust-toolchain targets. (Ref: `A4`)
+- [x] **1.5** Verify WASM compilation works (`cargo check --target wasm32-unknown-unknown`). (Ref: `A4`, `A5`)
+
+### Milestone 2: Core Traits & IDs (fastpay-types)
+
+- [x] **2.1** Define `Certificate` trait. (Ref: `A2`)
+- [x] **2.2** Define `QuorumCert` trait. (Ref: `A2`)
+- [x] **2.3** Define `QuorumAssembler` trait. (Ref: `A2`)
+- [x] **2.4** Define `Signer` trait with domain-separated signing context. (Ref: `A2`)
+- [x] **2.5** Define `VerificationContext` (committee + epoch binding). (Ref: `A2`, `A11`)
+- [x] **2.6** Implement `Address` wrapper type (20 bytes, validation, Display). (Ref: `A2`)
+- [x] **2.7** Implement `TxHash` wrapper type (32 bytes). (Ref: `A2`)
+- [x] **2.8** Implement `EffectsHash` wrapper type (32 bytes). (Ref: `A2`)
+- [x] **2.9** Implement `QcHash` wrapper type (32 bytes). (Ref: `A2`)
+- [x] **2.10** Implement `NonceKey` wrapper type (32 bytes). (Ref: `A2`)
+- [x] **2.11** Define error types (`CryptoError`, `AssemblyError`, `ValidationError`). (Ref: `A2`)
+
+### Milestone 3: Proto Generation (fastpay-proto)
+
+- [x] **3.1** Set up prost-build in build.rs. (Ref: `A1`)
+- [x] **3.2** Generate Rust types from proto files. (Ref: `A1`)
+- [x] **3.3** Add `convert.rs` with proto <-> domain type conversions (after Milestone 2 domain IDs are stable). (Ref: `A1`, `A2`)
+- [x] **3.4** Export generated types in lib.rs. (Ref: `A1`)
+- [x] **3.5** Add unit tests for serialization round-trips. (Ref: `A1`)
+
+### Milestone 4: Crypto Implementations (fastpay-crypto)
+
+- [ ] **4.1** Implement `Ed25519Certificate` (implements `Certificate` trait). (Ref: `A2`, `A5`)
+- [ ] **4.2** Implement `Ed25519Signer` (implements `Signer` trait). (Ref: `A2`, `A5`)
+- [ ] **4.3** Implement `MultiCertQC` (implements `QuorumCert` trait). (Ref: `A2`)
+- [ ] **4.4** Implement `SimpleAssembler` (implements `QuorumAssembler` trait). (Ref: `A2`)
+- [ ] **4.5** Implement `compute_tx_hash()` (canonical serialization -> sha256). (Ref: `A6`)
+- [ ] **4.6** Implement `compute_effects_hash()`. (Ref: `A6`)
+- [ ] **4.7** Implement domain-separated cert signing preimage (bind chain_id + domain_tag + protocol_version + epoch). (Ref: `A2`, `A6`)
+- [ ] **4.8** Implement `compute_qc_hash()`. (Ref: `A6`)
+- [ ] **4.9** Specify canonical byte encoding rules (field order, width, presence tags, sorting). (Ref: `A6`)
+- [ ] **4.10** Add golden vectors for tx/effects/qc hash and cert preimages (native + WASM). (Ref: `A6`)
+- [ ] **4.11** Add cross-language vector harness (for example, TypeScript) for hash parity. (Ref: `A6`)
+- [ ] **4.12** Add unit tests for all crypto operations. (Ref: `A2`, `A6`)
+- [ ] **4.13** Verify WASM compatibility of crypto crate. (Ref: `A4`, `A5`)
+
+### Milestone 5: Transport Abstraction (fastpay-user-client)
+
+- [ ] **5.1** Define `SidecarTransport` trait (async, ?Send for WASM). (Ref: `A3`, `A4`)
+- [ ] **5.2** Define `TransportError` type. (Ref: `A3`)
+- [ ] **5.3** Implement `MockTransport` (wraps MockSidecar). (Ref: `A3`, `A8`)
+- [ ] **5.4** Add request metadata (idempotency key, timeout budget, retry policy). (Ref: `A3`, `A11`)
+- [ ] **5.5** Implement retry strategy (exponential backoff + jitter, deadline-aware). (Ref: `A3`, `A11`)
+- [ ] **5.6** Add transport configuration struct (endpoints, timeouts, retry settings). (Ref: `A3`)
+- [ ] **5.7** Add multi-validator transport wrapper (submit to N validators). (Ref: `A3`, `A11`)
+
+### Milestone 6: Mock Sidecar (fastpay-sidecar-mock)
+
+- [ ] **6.1** Implement `MockSidecar` struct with state. (Ref: `A8`)
+- [ ] **6.2** Decode and validate payment semantics from canonical `tempo_tx` bytes. (Ref: `A8`, `A6`)
+- [ ] **6.3** Enforce `intent` consistency check (`intent` is optional metadata only). (Ref: `A8`)
+- [ ] **6.4** Implement balance checking (base + overlay). (Ref: `A8`)
+- [ ] **6.5** Implement QC credit extraction (for chained spends). (Ref: `A8`, `A9`)
+- [ ] **6.6** Implement nonce validation (sequence ordering). (Ref: `A8`, `A11`)
+- [ ] **6.7** Implement equivocation guard. (Ref: `A8`)
+- [ ] **6.8** Implement certificate signing using `Ed25519Signer`. (Ref: `A2`, `A8`)
+- [ ] **6.9** Store multiple certs per tx with dedupe-by-signer logic. (Ref: `A8`)
+- [ ] **6.10** Implement bulletin board storage and queries. (Ref: `A8`, `A3`)
+- [ ] **6.11** Add pre-seeded `DemoScenario` (Alice/Bob/Carol with starting balances). (Ref: `A9`)
+- [ ] **6.12** Add unit tests for validation logic (accept/reject cases). (Ref: `A8`)
+
+### Milestone 7: Transaction Builder (fastpay-user-client)
+
+- [ ] **7.1** Implement `TxBuilder` struct. (Ref: `A2`, `A7`)
+- [ ] **7.2** Implement `with_payment()` method (sender, recipient, amount, asset). (Ref: `A6`)
+- [ ] **7.3** Implement `with_nonce()` method (key selection, auto-increment). (Ref: `A7`, `A11`)
+- [ ] **7.4** Implement `with_expiry()` method (block height or timestamp). (Ref: `A6`)
+- [ ] **7.5** Implement `with_parent_qc()` method for chained spends. (Ref: `A2`, `A9`)
+- [ ] **7.6** Implement `build()` method with local validation. (Ref: `A6`, `A11`)
+- [ ] **7.7** Add unit tests for tx construction. (Ref: `A6`)
+
+### Milestone 8: Certificate Manager (fastpay-user-client)
+
+- [ ] **8.1** Implement `CertManager<C: Certificate, Q: QuorumCert>` (generic over cert types). (Ref: `A2`)
+- [ ] **8.2** Implement certificate collection and storage. (Ref: `A7`)
+- [ ] **8.3** Implement signature verification on received certs with committee/epoch context. (Ref: `A2`, `A11`)
+- [ ] **8.4** Reject certs from unknown validators or wrong epoch. (Ref: `A2`, `A11`)
+- [ ] **8.5** Implement tx_hash/effects_hash matching validation. (Ref: `A2`, `A6`)
+- [ ] **8.6** Implement QC assembly using `QuorumAssembler`. (Ref: `A2`)
+- [ ] **8.7** Add unit tests for assembly edge cases (duplicate certs, mismatched hashes). (Ref: `A2`)
+
+### Milestone 9: Wallet State Management (fastpay-user-client)
+
+- [ ] **9.1** Implement `WalletState<Q: QuorumCert>` struct (generic over QC type). (Ref: `A7`)
+- [ ] **9.2** Implement balance tracking (base + pending adjustments). (Ref: `A7`)
+- [ ] **9.3** Implement atomic nonce reservation (`reserve_next_nonce`) per key. (Ref: `A7`, `A11`)
+- [ ] **9.4** Implement reservation release/commit flow for terminal submit outcomes. (Ref: `A7`)
+- [ ] **9.5** Implement pending tx tracking. (Ref: `A7`)
+- [ ] **9.6** Implement QC storage for use as parents. (Ref: `A7`, `A9`)
+- [ ] **9.7** Implement state update on cert/QC receipt. (Ref: `A7`)
+- [ ] **9.8** Implement bounded cache/pruning policy (pending/certs/QCs). (Ref: `A7`, `A11`)
+- [ ] **9.9** Add durable snapshot + journal replay for crash recovery. (Ref: `A7`, `A11`)
+- [ ] **9.10** Add serde serialization support. (Ref: `A7`, `A10`)
+
+### Milestone 10: Client Facade & Demo
+
+- [ ] **10.1** Implement `FastPayClient<T, C, Q>` facade (generic over transport, cert, QC). (Ref: `A2`, `A3`, `A7`)
+- [ ] **10.2** Implement `send_payment()` high-level method. (Ref: `A3`, `A7`)
+- [ ] **10.3** Implement `send_payment_with_parent()` for chained spends. (Ref: `A9`)
+- [ ] **10.4** Implement `poll_bulletin_board()` for cert discovery. (Ref: `A3`)
+- [ ] **10.5** Implement `assemble_qc()` convenience method. (Ref: `A2`)
+- [ ] **10.6** Implement chain-reconciliation loop (inclusion/finality -> cache cleanup). (Ref: `A7`, `A11`)
+- [ ] **10.7** Create `demo` binary crate. (Ref: `A1`, `A9`)
+- [ ] **10.8** Implement Alice->Bob->Carol demo scenario. (Ref: `A9`)
+- [ ] **10.9** Add tracing/logging for demo visibility. (Ref: `A9`, `A11`)
+
+### Milestone 11: Integration Testing
+
+- [ ] **11.1** Integration test: single payment (Alice->Bob). (Ref: `A9`)
+- [ ] **11.2** Integration test: chained payment (Alice->Bob->Carol). (Ref: `A9`)
+- [ ] **11.3** Integration test: rejection - insufficient funds. (Ref: `A8`)
+- [ ] **11.4** Integration test: rejection - equivocation attempt. (Ref: `A8`)
+- [ ] **11.5** Integration test: rejection - expired transaction. (Ref: `A6`, `A8`)
+- [ ] **11.6** Integration test: rejection - invalid parent QC. (Ref: `A2`, `A8`)
+- [ ] **11.7** Integration test: rejection - `intent` mismatch vs decoded `tempo_tx`. (Ref: `A8`)
+- [ ] **11.8** Integration test: cert dedupe by signer for same `tx_hash`. (Ref: `A8`)
+- [ ] **11.9** Integration test: reject unknown validator signer (not in committee). (Ref: `A2`, `A11`)
+- [ ] **11.10** Integration test: reject mixed/incorrect epoch certs. (Ref: `A2`, `A11`)
+- [ ] **11.11** Integration test: conflicting cert sets for same contention domain. (Ref: `A8`)
+- [ ] **11.12** Integration test: stale chain-head vs expiry boundary race. (Ref: `A3`, `A6`)
+- [ ] **11.13** Integration test: bulletin-board pagination consistency under partial sync. (Ref: `A3`)
+- [ ] **11.14** Integration test: crash/restart recovery preserves nonce reservations. (Ref: `A7`, `A11`)
+- [ ] **11.15** Verify full demo scenario runs end-to-end. (Ref: `A9`)
+- [ ] **11.16** Test WASM build (`cargo build --target wasm32-unknown-unknown --features wasm`). (Ref: `A4`, `A5`)
+
+### Milestone 12: Documentation & Handoff
+
+- [ ] **12.1** Document public API with rustdoc. (Ref: `A2`, `A3`, `A7`)
+- [ ] **12.2** Document trait interfaces and upgrade path. (Ref: `A2`)
+- [ ] **12.3** Document mock sidecar behavior for partner reference. (Ref: `A8`)
+- [ ] **12.4** Create integration guide for real sidecar (transport swap). (Ref: `A3`, `A10`)
+- [ ] **12.5** List Phase 2 TODOs (gRPC transport, aggregator, threshold sigs, UI). (Ref: `A10`)

@@ -1,0 +1,19 @@
+[package]
+name = "fastpay-proto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["native"]
+native = []
+wasm = []
+
+[dependencies]
+fastpay-types = { path = "../fastpay-types" }
+prost.workspace = true
+prost-types.workspace = true
+thiserror.workspace = true
+
+[build-dependencies]
+prost-build.workspace = true
