@@ -178,6 +178,29 @@ impl<T: SidecarTransport + Clone> MultiValidatorTransport<T> {
         )
         .await
     }
+
+    pub async fn get_bulletin_board_all(
+        &self,
+        request: v1::GetBulletinBoardRequest,
+    ) -> Vec<Result<v1::GetBulletinBoardResponse, TransportError>> {
+        join_all(
+            self.validators
+                .iter()
+                .map(|transport| transport.get_bulletin_board(request.clone())),
+        )
+        .await
+    }
+
+    pub async fn get_chain_head_all(
+        &self,
+    ) -> Vec<Result<v1::GetChainHeadResponse, TransportError>> {
+        join_all(
+            self.validators
+                .iter()
+                .map(|transport| transport.get_chain_head()),
+        )
+        .await
+    }
 }
 
 pub async fn retry_with_backoff<T, F, Fut>(

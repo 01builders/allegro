@@ -130,16 +130,16 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 
 ### Milestone 10: Client Facade & Demo
 
-- [ ] **10.1** Implement `FastPayClient<T, C, Q>` facade (generic over transport, cert, QC). (Ref: `A2`, `A3`, `A7`)
-- [ ] **10.2** Implement `send_payment()` high-level method. (Ref: `A3`, `A7`)
-- [ ] **10.3** Implement `send_payment_with_parent()` for chained spends. (Ref: `A9`)
-- [ ] **10.4** Implement `poll_bulletin_board()` for cert discovery. (Ref: `A3`)
-- [ ] **10.5** Implement `assemble_qc()` convenience method. (Ref: `A2`)
-- [ ] **10.6** Implement chain-reconciliation loop (inclusion/finality -> cache cleanup). (Ref: `A7`, `A11`)
-- [ ] **10.7** Create `demo` binary crate. (Ref: `A1`, `A9`)
-- [ ] **10.8** Implement Alice->Bob->Carol demo scenario. (Ref: `A9`)
-- [ ] **10.9** Add tracing/logging for demo visibility. (Ref: `A9`, `A11`)
-- [ ] **10.10** 🔖 **Git commit**: "Add FastPayClient facade and Alice→Bob→Carol demo binary"
+- [x] **10.1** Implement `FastPayClient<T, C, Q>` facade (generic over transport, cert, QC). (Ref: `A2`, `A3`, `A7`)
+- [x] **10.2** Implement `send_payment()` high-level method. (Ref: `A3`, `A7`)
+- [x] **10.3** Implement `send_payment_with_parent()` for chained spends. (Ref: `A9`)
+- [x] **10.4** Implement `poll_bulletin_board()` for cert discovery. (Ref: `A3`)
+- [x] **10.5** Implement `assemble_qc()` convenience method. (Ref: `A2`)
+- [x] **10.6** Implement chain-reconciliation loop (inclusion/finality -> cache cleanup). (Ref: `A7`, `A11`)
+- [x] **10.7** Create `demo` binary crate. (Ref: `A1`, `A9`)
+- [x] **10.8** Implement Alice->Bob->Carol demo scenario. (Ref: `A9`)
+- [x] **10.9** Add tracing/logging for demo visibility. (Ref: `A9`, `A11`)
+- [x] **10.10** 🔖 **Git commit**: "Add FastPayClient facade and Alice→Bob→Carol demo binary"
 
 ### Milestone 11: Integration Testing
 
