@@ -169,3 +169,16 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 - [x] **12.4** Create integration guide for real sidecar (transport swap). (Ref: `A3`, `A10`)
 - [x] **12.5** List Phase 2 TODOs (gRPC transport, aggregator, threshold sigs, UI). (Ref: `A10`)
 - [x] **12.6** 🔖 **Git commit**: "Add documentation and Phase 2 handoff notes"
+
+### Milestone 13: Phase 1 Remediation (Spec Compliance Gaps)
+
+- [x] **13.1** Implement durable wallet journal events that can replay pending tx and cert/QC state updates from snapshot+delta events. (Ref: `A7`, `A11`)
+- [x] **13.2** Add wallet replay tests proving pending tx/cert state is reconstructed from snapshot + journal delta. (Ref: `A7`, `A11`)
+- [x] **13.3** Implement reconciliation behavior that marks QC-backed pending txs as settled when chain-head polling succeeds. (Ref: `A7`, `A11`)
+- [x] **13.4** Add client reconciliation tests for pending->settled transitions and cache cleanup behavior. (Ref: `A7`, `A11`)
+- [x] **13.5** Implement native `GrpcTransport` for `SidecarTransport` using tonic unary RPC calls (submit, bulletin board, validator info, chain head). (Ref: `A3`)
+- [x] **13.6** Add `GrpcTransport` tests (endpoint validation/error mapping + request path coverage). (Ref: `A3`)
+- [x] **13.7** Add wasm hash-vector test wiring in `fastpay-crypto` so canonical vector assertions compile/run for wasm-targeted tests. (Ref: `A4`, `A6`)
+- [x] **13.8** Add test/build commands to verify wasm hash vectors and cross-language vector harness execution as part of remediation validation. (Ref: `A4`, `A6`)
+- [x] **13.9** Run comprehensive checks (`cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `cargo test -p fastpay-crypto --target wasm32-unknown-unknown --features wasm --no-run`, `node crates/fastpay-crypto/vectors/hash_vectors.ts`) and confirm clean. (Ref: `A4`, `A6`, `A11`)
+- [x] **13.10** 🔖 **Git commit + push**: "Close Phase 1 spec compliance gaps (replay, reconciliation, grpc transport, wasm vector tests)"
