@@ -163,9 +163,9 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 
 ### Milestone 12: Documentation & Handoff
 
-- [ ] **12.1** Document public API with rustdoc. (Ref: `A2`, `A3`, `A7`)
-- [ ] **12.2** Document trait interfaces and upgrade path. (Ref: `A2`)
-- [ ] **12.3** Document mock sidecar behavior for partner reference. (Ref: `A8`)
-- [ ] **12.4** Create integration guide for real sidecar (transport swap). (Ref: `A3`, `A10`)
-- [ ] **12.5** List Phase 2 TODOs (gRPC transport, aggregator, threshold sigs, UI). (Ref: `A10`)
-- [ ] **12.6** 🔖 **Git commit**: "Add documentation and Phase 2 handoff notes"
+- [x] **12.1** Document public API with rustdoc. (Ref: `A2`, `A3`, `A7`)
+- [x] **12.2** Document trait interfaces and upgrade path. (Ref: `A2`)
+- [x] **12.3** Document mock sidecar behavior for partner reference. (Ref: `A8`)
+- [x] **12.4** Create integration guide for real sidecar (transport swap). (Ref: `A3`, `A10`)
+- [x] **12.5** List Phase 2 TODOs (gRPC transport, aggregator, threshold sigs, UI). (Ref: `A10`)
+- [x] **12.6** 🔖 **Git commit**: "Add documentation and Phase 2 handoff notes"

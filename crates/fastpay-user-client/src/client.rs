@@ -12,6 +12,7 @@ use crate::{
     wallet::{PendingStatus, PendingTx, WalletError, WalletState},
 };
 
+/// High-level client facade errors.
 #[derive(Debug, Error)]
 pub enum FastPayClientError {
     #[error(transparent)]
@@ -32,6 +33,8 @@ pub enum FastPayClientError {
     MissingParentProtoQc(TxHash),
 }
 
+/// High-level FastPay client that coordinates tx building, transport fan-out,
+/// cert collection, QC assembly, and wallet bookkeeping.
 pub struct FastPayClient<T, C, Q, A>
 where
     T: SidecarTransport + Clone,

@@ -1,3 +1,12 @@
+//! FastPay user client library for Phase 1.
+//!
+//! This crate exposes:
+//! - transport abstractions (`SidecarTransport`, `MockTransport`, multi-validator wrapper),
+//! - transaction construction (`TxBuilder`),
+//! - certificate collection + QC assembly (`CertManager`),
+//! - wallet state (`WalletState`) with nonce reservation and crash-recovery primitives,
+//! - high-level client facade (`FastPayClient`) for send/poll/reconcile workflows.
+
 pub mod client;
 pub mod cert_manager;
 pub mod transport;

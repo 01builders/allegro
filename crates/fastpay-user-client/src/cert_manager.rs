@@ -6,6 +6,7 @@ use fastpay_types::{
 };
 use thiserror::Error;
 
+/// Certificate manager errors for validation and QC assembly.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum CertManagerError {
     #[error("certificate tx hash mismatch")]
@@ -24,6 +25,7 @@ pub enum CertManagerError {
     Validation(#[from] ValidationError),
 }
 
+/// Collects validator certificates and assembles quorum certificates.
 #[derive(Debug, Clone)]
 pub struct CertManager<C, Q, A>
 where

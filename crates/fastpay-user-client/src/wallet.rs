@@ -4,6 +4,7 @@ use fastpay_types::{Address, AssetId, Certificate, NonceKey, QuorumCert, TxHash}
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+/// Pending transaction lifecycle states tracked by the wallet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PendingStatus {
     Pending,
@@ -11,6 +12,7 @@ pub enum PendingStatus {
     Failed,
 }
 
+/// Pending transaction metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PendingTx {
     pub tx_hash: TxHash,
@@ -22,6 +24,7 @@ pub struct PendingTx {
     pub status: PendingStatus,
 }
 
+/// Size limits for wallet caches.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CacheLimits {
     pub max_pending_txs: usize,
@@ -39,6 +42,7 @@ impl Default for CacheLimits {
     }
 }
 
+/// Durable state event used for journal replay.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StateEvent {
     NonceReserved { key: NonceKey, seq: u64 },
@@ -52,6 +56,7 @@ pub enum StateEvent {
     PendingAdjustment { asset: AssetId, delta: i64 },
 }
 
+/// Serializable wallet snapshot persisted for crash recovery.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound(
     serialize = "Q: Serialize, Q::Cert: Serialize",
@@ -72,6 +77,7 @@ where
     pub cache_limits: CacheLimits,
 }
 
+/// Wallet state errors.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum WalletError {
     #[error("reserved nonce not found for key {key} seq {seq}")]
@@ -80,6 +86,7 @@ pub enum WalletError {
     PendingTxNotFound,
 }
 
+/// In-memory wallet state with bounded caches and replay journal.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(
     serialize = "Q: Serialize, Q::Cert: Serialize",

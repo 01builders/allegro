@@ -7,6 +7,7 @@ use fastpay_types::{
 };
 use thiserror::Error;
 
+/// Transaction builder validation errors.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum TxBuilderError {
     #[error("missing field `{0}`")]
@@ -17,6 +18,7 @@ pub enum TxBuilderError {
     Validation(#[from] ValidationError),
 }
 
+/// Result of a built FastPay transaction including derived hashes.
 #[derive(Debug, Clone)]
 pub struct BuiltTx {
     pub tx: v1::FastPayTx,
@@ -24,6 +26,7 @@ pub struct BuiltTx {
     pub effects_hash: fastpay_types::EffectsHash,
 }
 
+/// Fluent transaction builder for `FastPayTx`.
 #[derive(Debug, Clone, Default)]
 pub struct TxBuilder {
     chain_id: Option<u64>,

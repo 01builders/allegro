@@ -8,6 +8,7 @@ use futures::future::join_all;
 use rand::Rng;
 use thiserror::Error;
 
+/// Per-request metadata used for idempotent retries and deadline control.
 #[derive(Debug, Clone)]
 pub struct RequestMeta {
     pub client_request_id: String,
@@ -15,6 +16,7 @@ pub struct RequestMeta {
     pub retry_policy: RetryPolicy,
 }
 
+/// Retry behavior for transport operations.
 #[derive(Debug, Clone)]
 pub struct RetryPolicy {
     pub max_retries: u32,
@@ -34,12 +36,14 @@ impl Default for RetryPolicy {
     }
 }
 
+/// Validator endpoint configuration.
 #[derive(Debug, Clone)]
 pub struct ValidatorEndpoint {
     pub name: String,
     pub url: String,
 }
 
+/// Transport configuration shared by sidecar clients.
 #[derive(Debug, Clone)]
 pub struct TransportConfig {
     pub validators: Vec<ValidatorEndpoint>,
@@ -57,6 +61,7 @@ impl Default for TransportConfig {
     }
 }
 
+/// Error model for transport operations.
 #[derive(Debug, Error, Clone)]
 pub enum TransportError {
     #[error("request timed out")]
@@ -77,6 +82,7 @@ impl TransportError {
     }
 }
 
+/// Sidecar transport interface. Implementations may use in-memory mocks, gRPC, or grpc-web.
 #[async_trait(?Send)]
 pub trait SidecarTransport {
     async fn submit_fastpay(
@@ -97,6 +103,7 @@ pub trait SidecarTransport {
     async fn get_chain_head(&self) -> Result<v1::GetChainHeadResponse, TransportError>;
 }
 
+/// In-memory transport backed by `MockSidecar`, used for Phase 1 and tests.
 #[derive(Clone)]
 pub struct MockTransport {
     sidecar: Arc<Mutex<MockSidecar>>,
@@ -152,6 +159,7 @@ impl SidecarTransport for MockTransport {
     }
 }
 
+/// Fan-out wrapper that submits the same request to multiple validators in parallel.
 #[derive(Clone)]
 pub struct MultiValidatorTransport<T: SidecarTransport + Clone> {
     validators: Vec<T>,
