@@ -1,6 +1,8 @@
+pub mod cert_manager;
 pub mod transport;
 pub mod tx_builder;
 
+pub use cert_manager::{CertManager, CertManagerError};
 pub use transport::{
     MultiValidatorTransport, RequestMeta, RetryPolicy, SidecarTransport, TransportConfig,
     TransportError, ValidatorEndpoint,

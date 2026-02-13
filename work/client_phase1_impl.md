@@ -105,14 +105,14 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 
 ### Milestone 8: Certificate Manager (fastpay-user-client)
 
-- [ ] **8.1** Implement `CertManager<C: Certificate, Q: QuorumCert>` (generic over cert types). (Ref: `A2`)
-- [ ] **8.2** Implement certificate collection and storage. (Ref: `A7`)
-- [ ] **8.3** Implement signature verification on received certs with committee/epoch context. (Ref: `A2`, `A11`)
-- [ ] **8.4** Reject certs from unknown validators or wrong epoch. (Ref: `A2`, `A11`)
-- [ ] **8.5** Implement tx_hash/effects_hash matching validation. (Ref: `A2`, `A6`)
-- [ ] **8.6** Implement QC assembly using `QuorumAssembler`. (Ref: `A2`)
-- [ ] **8.7** Add unit tests for assembly edge cases (duplicate certs, mismatched hashes). (Ref: `A2`)
-- [ ] **8.8** 🔖 **Git commit**: "Add tx builder and certificate manager to fastpay-user-client"
+- [x] **8.1** Implement `CertManager<C: Certificate, Q: QuorumCert>` (generic over cert types). (Ref: `A2`)
+- [x] **8.2** Implement certificate collection and storage. (Ref: `A7`)
+- [x] **8.3** Implement signature verification on received certs with committee/epoch context. (Ref: `A2`, `A11`)
+- [x] **8.4** Reject certs from unknown validators or wrong epoch. (Ref: `A2`, `A11`)
+- [x] **8.5** Implement tx_hash/effects_hash matching validation. (Ref: `A2`, `A6`)
+- [x] **8.6** Implement QC assembly using `QuorumAssembler`. (Ref: `A2`)
+- [x] **8.7** Add unit tests for assembly edge cases (duplicate certs, mismatched hashes). (Ref: `A2`)
+- [x] **8.8** 🔖 **Git commit**: "Add tx builder and certificate manager to fastpay-user-client"
 
 ### Milestone 9: Wallet State Management (fastpay-user-client)
 
