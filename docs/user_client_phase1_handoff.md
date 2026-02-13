@@ -1,4 +1,4 @@
-# FastPay Phase 1 Handoff Notes
+# User Client FastPay Phase 1 Handoff Notes
 
 ## Public API Summary
 
