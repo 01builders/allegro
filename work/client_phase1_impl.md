@@ -143,23 +143,23 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 
 ### Milestone 11: Integration Testing
 
-- [ ] **11.1** Integration test: single payment (Alice->Bob). (Ref: `A9`)
-- [ ] **11.2** Integration test: chained payment (Alice->Bob->Carol). (Ref: `A9`)
-- [ ] **11.3** Integration test: rejection - insufficient funds. (Ref: `A8`)
-- [ ] **11.4** Integration test: rejection - equivocation attempt. (Ref: `A8`)
-- [ ] **11.5** Integration test: rejection - expired transaction. (Ref: `A6`, `A8`)
-- [ ] **11.6** Integration test: rejection - invalid parent QC. (Ref: `A2`, `A8`)
-- [ ] **11.7** Integration test: rejection - `intent` mismatch vs decoded `tempo_tx`. (Ref: `A8`)
-- [ ] **11.8** Integration test: cert dedupe by signer for same `tx_hash`. (Ref: `A8`)
-- [ ] **11.9** Integration test: reject unknown validator signer (not in committee). (Ref: `A2`, `A11`)
-- [ ] **11.10** Integration test: reject mixed/incorrect epoch certs. (Ref: `A2`, `A11`)
-- [ ] **11.11** Integration test: conflicting cert sets for same contention domain. (Ref: `A8`)
-- [ ] **11.12** Integration test: stale chain-head vs expiry boundary race. (Ref: `A3`, `A6`)
-- [ ] **11.13** Integration test: bulletin-board pagination consistency under partial sync. (Ref: `A3`)
-- [ ] **11.14** Integration test: crash/restart recovery preserves nonce reservations. (Ref: `A7`, `A11`)
-- [ ] **11.15** Verify full demo scenario runs end-to-end. (Ref: `A9`)
-- [ ] **11.16** Test WASM build (`cargo build --target wasm32-unknown-unknown --features wasm`). (Ref: `A4`, `A5`)
-- [ ] **11.17** 🔖 **Git commit**: "Add integration tests for payment flows and edge cases"
+- [x] **11.1** Integration test: single payment (Alice->Bob). (Ref: `A9`)
+- [x] **11.2** Integration test: chained payment (Alice->Bob->Carol). (Ref: `A9`)
+- [x] **11.3** Integration test: rejection - insufficient funds. (Ref: `A8`)
+- [x] **11.4** Integration test: rejection - equivocation attempt. (Ref: `A8`)
+- [x] **11.5** Integration test: rejection - expired transaction. (Ref: `A6`, `A8`)
+- [x] **11.6** Integration test: rejection - invalid parent QC. (Ref: `A2`, `A8`)
+- [x] **11.7** Integration test: rejection - `intent` mismatch vs decoded `tempo_tx`. (Ref: `A8`)
+- [x] **11.8** Integration test: cert dedupe by signer for same `tx_hash`. (Ref: `A8`)
+- [x] **11.9** Integration test: reject unknown validator signer (not in committee). (Ref: `A2`, `A11`)
+- [x] **11.10** Integration test: reject mixed/incorrect epoch certs. (Ref: `A2`, `A11`)
+- [x] **11.11** Integration test: conflicting cert sets for same contention domain. (Ref: `A8`)
+- [x] **11.12** Integration test: stale chain-head vs expiry boundary race. (Ref: `A3`, `A6`)
+- [x] **11.13** Integration test: bulletin-board pagination consistency under partial sync. (Ref: `A3`)
+- [x] **11.14** Integration test: crash/restart recovery preserves nonce reservations. (Ref: `A7`, `A11`)
+- [x] **11.15** Verify full demo scenario runs end-to-end. (Ref: `A9`)
+- [x] **11.16** Test WASM build (`cargo build --target wasm32-unknown-unknown --features wasm`). (Ref: `A4`, `A5`)
+- [x] **11.17** 🔖 **Git commit**: "Add integration tests for payment flows and edge cases"
 
 ### Milestone 12: Documentation & Handoff
 

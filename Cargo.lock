@@ -211,6 +211,7 @@ name = "demo"
 version = "0.1.0"
 dependencies = [
  "fastpay-crypto",
+ "fastpay-proto",
  "fastpay-sidecar-mock",
  "fastpay-types",
  "fastpay-user-client",
