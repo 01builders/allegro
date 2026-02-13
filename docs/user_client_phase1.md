@@ -20,37 +20,21 @@ This document covers the architecture and implementation plan for the FastPay us
 
 ### High-Level Component Diagram
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        User Client                              │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
-│  │   Wallet     │  │  TX Builder  │  │   Certificate        │   │
-│  │   State      │  │              │  │   Manager            │   │
-│  │              │  │              │  │                      │   │
-│  │ - balances   │  │ - build tx   │  │ - collect certs      │   │
-│  │ - nonces     │  │ - set expiry │  │ - verify signatures  │   │
-│  │ - pending    │  │ - chain QCs  │  │ - assemble QCs       │   │
-│  └──────────────┘  └──────────────┘  └──────────────────────┘   │
-│           │                │                    │               │
-│           └────────────────┼────────────────────┘               │
-│                            │                                    │
-│                            ▼                                    │
-│                 ┌──────────────────┐                            │
-│                 │  Transport Layer │                            │
-│                 │  (trait-based)   │                            │
-│                 └────────┬─────────┘                            │
-│                          │                                      │
-└──────────────────────────┼──────────────────────────────────────┘
-                           │
-              ┌────────────┴────────────┐
-              │                         │
-              ▼                         ▼
-    ┌─────────────────┐      ┌─────────────────┐
-    │  Mock Sidecar   │      │  gRPC Sidecar   │
-    │  (Phase 1 dev)  │      │  (Phase 1 end)  │
-    └─────────────────┘      └─────────────────┘
+```mermaid
+flowchart TB
+    subgraph Client["User Client"]
+        subgraph Components[" "]
+            direction LR
+            Wallet["Wallet State<br/>─────────<br/>balances<br/>nonces<br/>pending"]
+            TxBuilder["TX Builder<br/>─────────<br/>build tx<br/>set expiry<br/>chain QCs"]
+            CertMgr["Certificate Manager<br/>─────────<br/>collect certs<br/>verify signatures<br/>assemble QCs"]
+        end
+        Transport["Transport Layer<br/>(trait-based)"]
+        Components --> Transport
+    end
+
+    Transport --> Mock["Mock Sidecar<br/>(Phase 1 dev)"]
+    Transport --> GRPC["gRPC Sidecar<br/>(Phase 1 end)"]
 ```
 
 ### Crate Structure
