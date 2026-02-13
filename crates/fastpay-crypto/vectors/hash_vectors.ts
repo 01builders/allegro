@@ -1,3 +1,14 @@
+/**
+ * Cross-language hash parity test harness.
+ *
+ * This TypeScript implementation verifies that canonical hashing produces
+ * identical results across language implementations. This ensures a JS/TS
+ * client computes the same tx_hash, effects_hash, and qc_hash as the Rust
+ * code — important for browser interop since the user client targets WASM.
+ *
+ * Run: npx ts-node hash_vectors.ts
+ */
+
 import { createHash } from "crypto";
 import { readFileSync } from "fs";
 import { join } from "path";
