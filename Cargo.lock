@@ -302,8 +302,13 @@ dependencies = [
 name = "fastpay-sidecar-mock"
 version = "0.1.0"
 dependencies = [
+ "fastpay-crypto",
+ "fastpay-proto",
  "fastpay-types",
+ "hex",
+ "serde",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
@@ -320,8 +325,11 @@ name = "fastpay-user-client"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "fastpay-proto",
+ "fastpay-sidecar-mock",
  "fastpay-types",
  "futures",
+ "rand",
  "thiserror",
  "tokio",
  "tonic",
