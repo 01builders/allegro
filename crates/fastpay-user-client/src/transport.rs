@@ -156,6 +156,9 @@ impl GrpcTransport {
             validate_endpoint(&self.endpoint)?.connect_timeout(Duration::from_millis(timeout_ms));
         let channel = endpoint.connect().await.map_err(map_connect_error)?;
         let mut grpc = tonic::client::Grpc::new(channel);
+        grpc.ready()
+            .await
+            .map_err(|e| TransportError::Unavailable(e.to_string()))?;
         let mut req = tonic::Request::new(request);
         if let Ok(value) = MetadataValue::try_from(client_request_id) {
             req.metadata_mut().insert("x-client-request-id", value);

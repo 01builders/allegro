@@ -1,0 +1,29 @@
+[package]
+name = "fastpay-sidecar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "fastpay-sidecar"
+path = "src/main.rs"
+
+[dependencies]
+fastpay-crypto = { path = "../fastpay-crypto" }
+fastpay-proto = { path = "../fastpay-proto" }
+fastpay-types = { path = "../fastpay-types" }
+
+clap = { version = "4", features = ["derive"] }
+hex.workspace = true
+prost.workspace = true
+serde = { workspace = true, features = ["derive"] }
+tokio.workspace = true
+tokio-stream = "0.1"
+tonic.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+fastpay-user-client = { path = "../fastpay-user-client" }
+fastpay-sidecar-mock = { path = "../fastpay-sidecar-mock" }
+tokio-stream = { version = "0.1", features = ["net"] }
