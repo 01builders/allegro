@@ -23,6 +23,12 @@ run-release:
 test:
     cargo test
 
+# Run all workspace tests and print discovered test count
+test-all:
+    @count=$(cargo test --workspace -- --list 2>/dev/null | awk '/: test$/{n++} END{print n+0}'); \
+    echo "Discovered $count tests"; \
+    cargo test --workspace
+
 # Check the project (faster than build)
 check:
     cargo check
