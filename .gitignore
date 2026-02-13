@@ -1,0 +1,30 @@
+target/
+
+# Nix build artifacts
+result
+result-*
+.direnv/
+
+# macOS
+.DS_Store
+
+# Editor backup files
+*.swp
+*.swo
+*~
+*.bak
+**/*.rs.bk
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Rust analyzer artifacts
+rust-project.json
+
+# Merge artifacts
+*.orig
+
+# Working
+work/

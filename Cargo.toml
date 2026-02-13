@@ -1,0 +1,8 @@
+[package]
+name = "tempo-hackathon"
+version = "0.1.0"
+edition = "2021"
+description = "Tempo Hackathon - Hello World Rust Project"
+license = "MIT"
+
+[dependencies]

@@ -1,0 +1,117 @@
+syntax = "proto3";
+
+package tempo.fastpay.v1;
+
+option go_package = "tempo/fastpay/v1;fastpayv1";
+
+import "types.proto";
+
+// =============================================================================
+// sidecar.proto — Validator Sidecar gRPC API
+//
+// The FastPaySidecar service runs alongside each validator node. Clients submit
+// payment transactions here to receive signed ValidatorCertificates.
+//
+// RPCs:
+//   - SubmitFastPay: submit a tx, receive a certificate (or rejection)
+//   - SubmitFastPayStream: streaming variant with lifecycle updates
+//   - GetBulletinBoard: query stored certificates
+//   - GetValidatorInfo: validator identity and pubkey
+//   - GetChainHead: current block height
+//
+// Phases:
+//   - Phase 1: sidecar maintains simulated balances, clients query directly
+//   - Phase 2: sidecar reads state from Tempo node, submits txs to sub-block lane
+//
+// Implementors: validator sidecar (Dave, Edgar in the demo)
+// Callers: user clients (Alice, Bob, Carol), aggregator service
+// =============================================================================
+
+service FastPaySidecar {
+  // Submit a FastPay transaction to this validator sidecar.
+  // Returns either a ValidatorCertificate or a RejectReason.
+  rpc SubmitFastPay(SubmitFastPayRequest) returns (SubmitFastPayResponse);
+
+  // Streaming variant for callback-like behavior and lifecycle updates.
+  rpc SubmitFastPayStream(SubmitFastPayRequest) returns (stream SubmitFastPayEvent);
+
+  // Bulletin board: request certificates.
+  // Phase 1: returns ALL certs; Phase 2: supports filtering.
+  rpc GetBulletinBoard(GetBulletinBoardRequest) returns (GetBulletinBoardResponse);
+
+  // Validator metadata (pubkey, name, etc).
+  rpc GetValidatorInfo(GetValidatorInfoRequest) returns (GetValidatorInfoResponse);
+
+  // Current block height from validator/node.
+  rpc GetChainHead(GetChainHeadRequest) returns (GetChainHeadResponse);
+}
+
+// -----------------------------
+// Submit
+// -----------------------------
+
+message SubmitFastPayRequest {
+  FastPayTx tx = 1;
+
+  // Parent QCs the client presents (e.g., QC for Alice->Bob when Bob->Carol).
+  repeated QuorumCertificate parent_qcs = 2;
+}
+
+message SubmitFastPayResponse {
+  oneof result {
+    ValidatorCertificate cert = 1;
+    RejectReason reject = 2;
+  }
+}
+
+message SubmitFastPayEvent {
+  oneof event {
+    ValidatorCertificate cert = 1;
+    RejectReason reject = 2;
+    TxLifecycleUpdate lifecycle = 3;
+  }
+}
+
+// -----------------------------
+// Bulletin board
+// -----------------------------
+
+message GetBulletinBoardRequest {
+  // If empty, return ALL (Phase 1).
+  oneof filter {
+    bytes tx_hash = 1;     // 32 bytes
+    Address address = 2;   // certs involving address (sender or recipient)
+  }
+
+  // Pagination / incremental sync.
+  uint64 since_unix_millis = 3;
+  uint32 limit = 4;
+}
+
+message GetBulletinBoardResponse {
+  repeated ValidatorCertificate certs = 1;
+  string next_cursor = 2;
+}
+
+// -----------------------------
+// Validator info
+// -----------------------------
+
+message GetValidatorInfoRequest {}
+
+message GetValidatorInfoResponse {
+  ValidatorId validator = 1;
+  repeated string gossip_peers = 2;
+}
+
+// -----------------------------
+// Chain head
+// -----------------------------
+
+message GetChainHeadRequest {}
+
+message GetChainHeadResponse {
+  uint64 block_height = 1;
+  bytes block_hash = 2; // 32 bytes
+  uint64 unix_millis = 3;
+}

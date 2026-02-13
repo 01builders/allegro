@@ -1,0 +1,210 @@
+syntax = "proto3";
+
+package tempo.fastpay.v1;
+
+option go_package = "tempo/fastpay/v1;fastpayv1";
+
+// =============================================================================
+// types.proto — Shared data structures for FastPay
+//
+// All message types used across the system:
+//   - Primitives: Address, ChainId, Nonce2D, Expiry
+//   - Transactions: FastPayTx, PaymentIntent
+//   - Certificates: ValidatorCertificate, QuorumCertificate
+//   - Errors: RejectCode, RejectReason
+//   - Lifecycle: TxLifecycleUpdate
+//
+// Phases: 1 and 2
+// Imported by: sidecar.proto, aggregator.proto
+// =============================================================================
+
+// -----------------------------
+// Primitive types
+// -----------------------------
+
+// A Tempo address (EVM-style 20 bytes) or other account identifier.
+message Address {
+  bytes data = 1; // 20 bytes
+}
+
+// A TIP-20 token contract address (20 bytes). Use zero address for native asset if desired.
+message AssetId {
+  bytes data = 1; // 20 bytes
+}
+
+// Identifies the chain / network, to prevent replay across networks.
+message ChainId {
+  uint64 value = 1;
+}
+
+// 2D nonce key + sequence for Tempo transactions.
+// - nonce_key: uint256 in Tempo spec; we represent as 32-byte big-endian.
+// - nonce_seq: uint64 (Tempo spec)
+message Nonce2D {
+  bytes nonce_key_be = 1; // 32 bytes big-endian uint256
+  uint64 nonce_seq = 2;
+}
+
+// Expiry to limit replay / stale preconf.
+// Choose one of (block height) or (unix millis).
+message Expiry {
+  oneof kind {
+    uint64 max_block_height = 1;
+    uint64 unix_millis = 2;
+  }
+}
+
+// A Tempo/EVM transaction payload.
+// For hackathon speed, treat this as opaque bytes.
+// In Phase 2 you can populate with actual TempoTransaction encoding.
+message TempoTxBytes {
+  bytes data = 1; // RLP or TempoTransaction encoding (opaque)
+}
+
+// Optional decoded "payment intent" fields (useful for demo/UI/indexing).
+// NOTE: Validators should always verify against TempoTxBytes, not trust this alone.
+message PaymentIntent {
+  Address sender = 1;
+  Address recipient = 2;
+  uint64 amount = 3;    // demo uses whole dollars; production would use uint256 token units
+  AssetId asset = 4;    // TIP-20 contract address
+}
+
+// -----------------------------
+// FastPay transaction
+// -----------------------------
+
+message FastPayTx {
+  ChainId chain_id = 1;
+
+  // Canonical payload that will be signed and (Phase 2) submitted on-chain.
+  TempoTxBytes tempo_tx = 2;
+
+  // Optional decoded payment fields for convenient validation/UI.
+  PaymentIntent intent = 3;
+
+  // 2D nonce used for FastPay contention domain.
+  Nonce2D nonce = 4;
+
+  // Replay / staleness protection.
+  Expiry expiry = 5;
+
+  // Hash of a "parent" QC required to justify funds (for chained spends).
+  // For the demo: Bob->Carol includes parent_qc_hash = hash(QC(Alice->Bob)).
+  bytes parent_qc_hash = 6; // 32 bytes; empty if none
+
+  // Client-provided unique id for request correlation (optional).
+  string client_request_id = 7;
+}
+
+// -----------------------------
+// Rejection
+// -----------------------------
+
+enum RejectCode {
+  REJECT_CODE_UNSPECIFIED = 0;
+
+  // Basic validation
+  INVALID_FORMAT = 1;
+  WRONG_CHAIN = 2;
+  EXPIRED = 3;
+  NOT_PAYMENT_TX = 4;
+
+  // Contention / ordering
+  NONCE_SEQ_TOO_LOW = 5;
+  NONCE_SEQ_TOO_HIGH = 6; // if you require exactly next_seq+1
+  EQUIVOCATION = 7;       // already signed a different tx for (sender, nonce_key, nonce_seq)
+
+  // Funds / dependency
+  INSUFFICIENT_FUNDS = 8;
+  MISSING_PARENT_QC = 9;
+  INVALID_PARENT_QC = 10;
+
+  // Internal / transient
+  TEMPORARY_UNAVAILABLE = 11;
+}
+
+message RejectReason {
+  RejectCode code = 1;
+  string message = 2;
+}
+
+// -----------------------------
+// Certificates
+// -----------------------------
+
+// Validator identity information to help clients verify signatures.
+message ValidatorId {
+  // Human readable name for demo ("Dave", "Edgar") and stable ID.
+  string name = 1;
+  bytes id = 2; // stable identifier; could be pubkey hash
+  bytes pubkey = 3;
+}
+
+// Optional: human-friendly effects summary.
+// Validators should compute effects_hash from a canonical encoding of these fields.
+message EffectsSummary {
+  Address sender = 1;
+  Address recipient = 2;
+  uint64 amount = 3;
+  AssetId asset = 4;
+
+  // Nonce advancement for sender within the FastPay domain.
+  Nonce2D nonce = 5;
+}
+
+// A validator certificate (preconfirmation) over a FastPayTx and its claimed effects.
+message ValidatorCertificate {
+  ValidatorId signer = 1;
+
+  // Canonical transaction hash (hash over tempo_tx + nonce + expiry + chain_id + parent_qc_hash, etc).
+  bytes tx_hash = 2; // 32 bytes
+
+  // Hash of the effects the validator is attesting to.
+  // Effects should commit to at least debits/credits and nonce advancement in the FastPay overlay.
+  bytes effects_hash = 3; // 32 bytes
+
+  // Optional: a compact effects summary for UI/debug.
+  EffectsSummary effects = 4;
+
+  // Signature over domain || tx_hash || effects_hash.
+  bytes signature = 5;
+
+  // When the certificate was created (for ordering/debugging).
+  uint64 created_unix_millis = 6;
+}
+
+// Quorum Certificate: a threshold bundle of validator certificates.
+// Demo uses 2 validators; production would use 2f+1.
+message QuorumCertificate {
+  bytes tx_hash = 1;      // 32 bytes
+  bytes effects_hash = 2; // 32 bytes
+  repeated ValidatorCertificate certs = 3;
+
+  // Optional: threshold metadata (e.g., required count).
+  uint32 threshold = 4;
+
+  // Hash of this QC (canonical hash over tx_hash, effects_hash, and sorted certs).
+  bytes qc_hash = 5; // 32 bytes
+}
+
+// -----------------------------
+// Lifecycle tracking
+// -----------------------------
+
+message TxLifecycleUpdate {
+  bytes tx_hash = 1;
+
+  enum Stage {
+    STAGE_UNSPECIFIED = 0;
+    ACCEPTED = 1;           // sidecar accepted for signing
+    CERTIFIED = 2;          // sidecar issued a certificate
+    QUEUED_ONCHAIN = 3;     // Phase 2: submitted to node lane
+    INCLUDED = 4;           // Phase 2: observed in block
+    FINALIZED = 5;          // Phase 2: beyond chosen finality depth
+  }
+
+  Stage stage = 2;
+  uint64 unix_millis = 3;
+  uint64 block_height = 4; // if applicable
+}

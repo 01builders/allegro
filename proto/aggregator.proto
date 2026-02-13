@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package tempo.fastpay.v1;
+
+import "sidecar.proto";
+import "types.proto";
+
+option go_package = "tempo/fastpay/v1;fastpayv1";
+
+// =============================================================================
+// aggregator.proto — Third-party Aggregator gRPC API
+//
+// The FastPayAggregator service mirrors certificates from validator sidecars
+// and provides a unified interface for clients. It also hosts the demo UI.
+//
+// RPCs:
+//   - GetBulletinBoard: unified view of certificates from all validators
+//   - GetQuorumCertificate: assemble a QC from cached certs
+//   - GetChainHead: current block height (proxied from validators)
+//   - GetTxStatus: transaction lifecycle status for UI
+//
+// Phases:
+//   - Phase 2 only: clients query aggregator instead of sidecars directly;
+//     UI shows QC clearing before block height advances
+//
+// Implementors: third-party FastPay service
+// Callers: user clients, web UI
+// =============================================================================
+
+service FastPayAggregator {
+  // Unified bulletin board (mirrors validator sidecars).
+  rpc GetBulletinBoard(GetBulletinBoardRequest) returns (GetBulletinBoardResponse);
+
+  // Assemble a QC from cached certificates.
+  rpc GetQuorumCertificate(GetQuorumCertificateRequest) returns (GetQuorumCertificateResponse);
+
+  // Block height (proxied from validators/nodes).
+  rpc GetChainHead(GetChainHeadRequest) returns (GetChainHeadResponse);
+
+  // Transaction status for UI.
+  rpc GetTxStatus(GetTxStatusRequest) returns (GetTxStatusResponse);
+}
+
+// -----------------------------
+// QC assembly
+// -----------------------------
+
+message GetQuorumCertificateRequest {
+  bytes tx_hash = 1; // 32 bytes
+  bytes effects_hash = 2; // optional; if empty, infer dominant effects_hash
+  uint32 threshold = 3; // e.g. 2 for demo
+}
+
+message GetQuorumCertificateResponse {
+  oneof result {
+    QuorumCertificate qc = 1;
+    RejectReason reject = 2;
+  }
+}
+
+// -----------------------------
+// Transaction status
+// -----------------------------
+
+message GetTxStatusRequest {
+  bytes tx_hash = 1;
+}
+
+message GetTxStatusResponse {
+  bytes tx_hash = 1;
+
+  // Certificates observed so far.
+  repeated ValidatorCertificate certs = 2;
+
+  // Whether QC threshold is met.
+  bool qc_formed = 3;
+  bytes qc_hash = 4;
+
+  // Lifecycle information.
+  TxLifecycleUpdate.Stage stage = 5;
+  uint64 observed_block_height = 6;
+  uint64 last_updated_unix_millis = 7;
+}
