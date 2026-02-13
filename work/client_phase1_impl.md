@@ -51,19 +51,20 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 
 ### Milestone 4: Crypto Implementations (fastpay-crypto)
 
-- [ ] **4.1** Implement `Ed25519Certificate` (implements `Certificate` trait). (Ref: `A2`, `A5`)
-- [ ] **4.2** Implement `Ed25519Signer` (implements `Signer` trait). (Ref: `A2`, `A5`)
-- [ ] **4.3** Implement `MultiCertQC` (implements `QuorumCert` trait). (Ref: `A2`)
-- [ ] **4.4** Implement `SimpleAssembler` (implements `QuorumAssembler` trait). (Ref: `A2`)
-- [ ] **4.5** Implement `compute_tx_hash()` (canonical serialization -> sha256). (Ref: `A6`)
-- [ ] **4.6** Implement `compute_effects_hash()`. (Ref: `A6`)
-- [ ] **4.7** Implement domain-separated cert signing preimage (bind chain_id + domain_tag + protocol_version + epoch). (Ref: `A2`, `A6`)
-- [ ] **4.8** Implement `compute_qc_hash()`. (Ref: `A6`)
-- [ ] **4.9** Specify canonical byte encoding rules (field order, width, presence tags, sorting). (Ref: `A6`)
-- [ ] **4.10** Add golden vectors for tx/effects/qc hash and cert preimages (native + WASM). (Ref: `A6`)
-- [ ] **4.11** Add cross-language vector harness (for example, TypeScript) for hash parity. (Ref: `A6`)
-- [ ] **4.12** Add unit tests for all crypto operations. (Ref: `A2`, `A6`)
-- [ ] **4.13** Verify WASM compatibility of crypto crate. (Ref: `A4`, `A5`)
+- [x] **4.1** Implement `Ed25519Certificate` (implements `Certificate` trait). (Ref: `A2`, `A5`)
+- [x] **4.2** Implement `Ed25519Signer` (implements `Signer` trait). (Ref: `A2`, `A5`)
+- [x] **4.3** Implement `MultiCertQC` (implements `QuorumCert` trait). (Ref: `A2`)
+- [x] **4.4** Implement `SimpleAssembler` (implements `QuorumAssembler` trait). (Ref: `A2`)
+- [x] **4.5** Implement `compute_tx_hash()` (canonical serialization -> sha256). (Ref: `A6`)
+- [x] **4.6** Implement `compute_effects_hash()`. (Ref: `A6`)
+- [x] **4.7** Implement domain-separated cert signing preimage (bind chain_id + domain_tag + protocol_version + epoch). (Ref: `A2`, `A6`)
+- [x] **4.8** Implement `compute_qc_hash()`. (Ref: `A6`)
+- [x] **4.9** Specify canonical byte encoding rules (field order, width, presence tags, sorting). (Ref: `A6`)
+- [x] **4.10** Add golden vectors for tx/effects/qc hash and cert preimages (native + WASM). (Ref: `A6`)
+- [x] **4.11** Add cross-language vector harness (for example, TypeScript) for hash parity. (Ref: `A6`)
+- [x] **4.12** Add unit tests for all crypto operations. (Ref: `A2`, `A6`)
+- [x] **4.13** Verify WASM compatibility of crypto crate. (Ref: `A4`, `A5`)
+- [ ] **4.14** 🔖 **Git commit**: "Implement fastpay-crypto crate with ed25519 certificates and QC assembly"
 
 ### Milestone 5: Transport Abstraction (fastpay-user-client)
 
@@ -74,6 +75,7 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 - [ ] **5.5** Implement retry strategy (exponential backoff + jitter, deadline-aware). (Ref: `A3`, `A11`)
 - [ ] **5.6** Add transport configuration struct (endpoints, timeouts, retry settings). (Ref: `A3`)
 - [ ] **5.7** Add multi-validator transport wrapper (submit to N validators). (Ref: `A3`, `A11`)
+- [ ] **5.8** 🔖 **Git commit**: "Add transport abstraction with mock transport and retry logic"
 
 ### Milestone 6: Mock Sidecar (fastpay-sidecar-mock)
 
@@ -89,6 +91,7 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 - [ ] **6.10** Implement bulletin board storage and queries. (Ref: `A8`, `A3`)
 - [ ] **6.11** Add pre-seeded `DemoScenario` (Alice/Bob/Carol with starting balances). (Ref: `A9`)
 - [ ] **6.12** Add unit tests for validation logic (accept/reject cases). (Ref: `A8`)
+- [ ] **6.13** 🔖 **Git commit**: "Implement fastpay-sidecar-mock with validation logic and demo scenario"
 
 ### Milestone 7: Transaction Builder (fastpay-user-client)
 
@@ -109,6 +112,7 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 - [ ] **8.5** Implement tx_hash/effects_hash matching validation. (Ref: `A2`, `A6`)
 - [ ] **8.6** Implement QC assembly using `QuorumAssembler`. (Ref: `A2`)
 - [ ] **8.7** Add unit tests for assembly edge cases (duplicate certs, mismatched hashes). (Ref: `A2`)
+- [ ] **8.8** 🔖 **Git commit**: "Add tx builder and certificate manager to fastpay-user-client"
 
 ### Milestone 9: Wallet State Management (fastpay-user-client)
 
@@ -122,6 +126,7 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 - [ ] **9.8** Implement bounded cache/pruning policy (pending/certs/QCs). (Ref: `A7`, `A11`)
 - [ ] **9.9** Add durable snapshot + journal replay for crash recovery. (Ref: `A7`, `A11`)
 - [ ] **9.10** Add serde serialization support. (Ref: `A7`, `A10`)
+- [ ] **9.11** 🔖 **Git commit**: "Implement wallet state management with nonce reservation and cache pruning"
 
 ### Milestone 10: Client Facade & Demo
 
@@ -134,6 +139,7 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 - [ ] **10.7** Create `demo` binary crate. (Ref: `A1`, `A9`)
 - [ ] **10.8** Implement Alice->Bob->Carol demo scenario. (Ref: `A9`)
 - [ ] **10.9** Add tracing/logging for demo visibility. (Ref: `A9`, `A11`)
+- [ ] **10.10** 🔖 **Git commit**: "Add FastPayClient facade and Alice→Bob→Carol demo binary"
 
 ### Milestone 11: Integration Testing
 
@@ -153,6 +159,7 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 - [ ] **11.14** Integration test: crash/restart recovery preserves nonce reservations. (Ref: `A7`, `A11`)
 - [ ] **11.15** Verify full demo scenario runs end-to-end. (Ref: `A9`)
 - [ ] **11.16** Test WASM build (`cargo build --target wasm32-unknown-unknown --features wasm`). (Ref: `A4`, `A5`)
+- [ ] **11.17** 🔖 **Git commit**: "Add integration tests for payment flows and edge cases"
 
 ### Milestone 12: Documentation & Handoff
 
@@ -161,3 +168,4 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 - [ ] **12.3** Document mock sidecar behavior for partner reference. (Ref: `A8`)
 - [ ] **12.4** Create integration guide for real sidecar (transport swap). (Ref: `A3`, `A10`)
 - [ ] **12.5** List Phase 2 TODOs (gRPC transport, aggregator, threshold sigs, UI). (Ref: `A10`)
+- [ ] **12.6** 🔖 **Git commit**: "Add documentation and Phase 2 handoff notes"

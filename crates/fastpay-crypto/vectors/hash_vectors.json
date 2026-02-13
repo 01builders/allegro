@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "vector_name": "demo_vector_1",
+  "chain_id": 1337,
+  "domain_tag": "tempo.fastpay.cert.v1",
+  "protocol_version": 1,
+  "epoch": 42,
+  "tempo_tx_hex": "74656d706f3a7472616e736665723a616c6963653a626f623a3130",
+  "nonce_key_hex": "5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+  "nonce_seq": 7,
+  "expiry": {
+    "kind": "max_block_height",
+    "value": 99
+  },
+  "parent_qc_hash_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "sender_hex": "0101010101010101010101010101010101010101",
+  "recipient_hex": "0202020202020202020202020202020202020202",
+  "amount": 10,
+  "asset_hex": "0303030303030303030303030303030303030303",
+  "expected": {
+    "tx_hash_hex": "80f0bddcad91b05df8b0f96fe3b42fea9a5b5d358a61664616ec17289d80d8df",
+    "effects_hash_hex": "7ff26a3ecef7a937adaa2f13bcbb2dc349b1daaa63b5ede4b18f20d130f8859e",
+    "cert_preimage_hex": "74656d706f2e666173747061792e636572742e707265696d6167652e76310000001574656d706f2e666173747061792e636572742e763100010000000000000539000000000000002a80f0bddcad91b05df8b0f96fe3b42fea9a5b5d358a61664616ec17289d80d8df7ff26a3ecef7a937adaa2f13bcbb2dc349b1daaa63b5ede4b18f20d130f8859e",
+    "cert_digest_hex": "02bf6c27eb0c808a9fbda3cad277eab0634e6050a068054b878eeccc3e712313",
+    "qc_hash_hex": "fee9c0774bd5e57638e46c265bba36430f22e76ce9fa203a5eba6972a7809737"
+  }
+}
