@@ -1,0 +1,15 @@
+[package]
+name = "fastpay-types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["native"]
+native = []
+wasm = []
+
+[dependencies]
+hex.workspace = true
+serde.workspace = true
+thiserror.workspace = true

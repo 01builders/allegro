@@ -1,0 +1,25 @@
+[package]
+name = "fastpay-crypto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["native"]
+native = []
+wasm = []
+
+[dependencies]
+ed25519-dalek.workspace = true
+fastpay-types = { path = "../fastpay-types" }
+hex.workspace = true
+rand.workspace = true
+serde.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"

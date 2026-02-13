@@ -190,8 +190,11 @@ sequenceDiagram
   participant D as Dave Sidecar
   participant E as Edgar Sidecar
 
-  Note over A,B,C: Clients (Rust native + WASM)
-  Note over D,E: Validator sidecars (FastPay mempool + signing + bulletin board)
+  Note over A: Client (Rust native + WASM)
+  Note over B: Client (Rust native + WASM)
+  Note over C: Client (Rust native + WASM)
+  Note over D: Validator sidecar
+  Note over E: Validator sidecar
 
   A->>D: Submit FastPayTx T1 (A→B $10, nonce_key=FP, seq=a1, expiry)
   A->>E: Submit FastPayTx T1 (same payload)
@@ -267,14 +270,15 @@ sequenceDiagram
   participant A as Alice Client
   participant B as Bob Client
   participant C as Carol Client
-  participant S as FastPay Service (BB + UI)
+  participant S as FastPay Service
   participant D as Dave Sidecar
   participant E as Edgar Sidecar
   participant ND as Dave Tempo Node
   participant NE as Edgar Tempo Node
 
-  Note over D,E: Sidecars wired to nodes: read state + submit txs
-  Note over S: Mirrors validator bulletin boards + serves unified BB + polls block height
+  Note over D: Sidecar wired to node
+  Note over E: Sidecar wired to node
+  Note over S: Mirrors validator bulletin boards
 
   S->>D: Subscribe/Poll BulletinBoard
   S->>E: Subscribe/Poll BulletinBoard

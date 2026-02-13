@@ -1,0 +1,19 @@
+[package]
+name = "fastpay-sidecar-mock"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["native"]
+native = []
+wasm = []
+
+[dependencies]
+fastpay-crypto = { path = "../fastpay-crypto" }
+fastpay-proto = { path = "../fastpay-proto" }
+fastpay-types = { path = "../fastpay-types" }
+hex.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
