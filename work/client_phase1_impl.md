@@ -116,17 +116,17 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 
 ### Milestone 9: Wallet State Management (fastpay-user-client)
 
-- [ ] **9.1** Implement `WalletState<Q: QuorumCert>` struct (generic over QC type). (Ref: `A7`)
-- [ ] **9.2** Implement balance tracking (base + pending adjustments). (Ref: `A7`)
-- [ ] **9.3** Implement atomic nonce reservation (`reserve_next_nonce`) per key. (Ref: `A7`, `A11`)
-- [ ] **9.4** Implement reservation release/commit flow for terminal submit outcomes. (Ref: `A7`)
-- [ ] **9.5** Implement pending tx tracking. (Ref: `A7`)
-- [ ] **9.6** Implement QC storage for use as parents. (Ref: `A7`, `A9`)
-- [ ] **9.7** Implement state update on cert/QC receipt. (Ref: `A7`)
-- [ ] **9.8** Implement bounded cache/pruning policy (pending/certs/QCs). (Ref: `A7`, `A11`)
-- [ ] **9.9** Add durable snapshot + journal replay for crash recovery. (Ref: `A7`, `A11`)
-- [ ] **9.10** Add serde serialization support. (Ref: `A7`, `A10`)
-- [ ] **9.11** 🔖 **Git commit**: "Implement wallet state management with nonce reservation and cache pruning"
+- [x] **9.1** Implement `WalletState<Q: QuorumCert>` struct (generic over QC type). (Ref: `A7`)
+- [x] **9.2** Implement balance tracking (base + pending adjustments). (Ref: `A7`)
+- [x] **9.3** Implement atomic nonce reservation (`reserve_next_nonce`) per key. (Ref: `A7`, `A11`)
+- [x] **9.4** Implement reservation release/commit flow for terminal submit outcomes. (Ref: `A7`)
+- [x] **9.5** Implement pending tx tracking. (Ref: `A7`)
+- [x] **9.6** Implement QC storage for use as parents. (Ref: `A7`, `A9`)
+- [x] **9.7** Implement state update on cert/QC receipt. (Ref: `A7`)
+- [x] **9.8** Implement bounded cache/pruning policy (pending/certs/QCs). (Ref: `A7`, `A11`)
+- [x] **9.9** Add durable snapshot + journal replay for crash recovery. (Ref: `A7`, `A11`)
+- [x] **9.10** Add serde serialization support. (Ref: `A7`, `A10`)
+- [x] **9.11** 🔖 **Git commit**: "Implement wallet state management with nonce reservation and cache pruning"
 
 ### Milestone 10: Client Facade & Demo
 
