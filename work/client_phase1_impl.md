@@ -91,7 +91,7 @@ Architecture and protocol design are defined in `docs/user_client_phase1.md`.
 - [x] **6.10** Implement bulletin board storage and queries. (Ref: `A8`, `A3`)
 - [x] **6.11** Add pre-seeded `DemoScenario` (Alice/Bob/Carol with starting balances). (Ref: `A9`)
 - [x] **6.12** Add unit tests for validation logic (accept/reject cases). (Ref: `A8`)
-- [ ] **6.13** 🔖 **Git commit**: "Implement fastpay-sidecar-mock with validation logic and demo scenario"
+- [x] **6.13** 🔖 **Git commit**: "Implement fastpay-sidecar-mock with validation logic and demo scenario"
 
 ### Milestone 7: Transaction Builder (fastpay-user-client)
 
