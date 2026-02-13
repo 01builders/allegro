@@ -125,6 +125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         balances,
     ));
     state.set_chain_head(cli.block_height, 1_700_000_000_000);
+    state.set_gossip_peers(cli.peers.clone());
 
     let service = FastPaySidecarService::new(Arc::clone(&state));
 

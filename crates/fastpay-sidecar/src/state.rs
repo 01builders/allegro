@@ -69,7 +69,9 @@ struct Inner {
     request_cache_order: VecDeque<String>,
     nonce_sequences: HashMap<(Address, NonceKey), u64>,
     current_block_height: u64,
+    current_block_hash: [u8; 32],
     current_unix_millis: u64,
+    gossip_peers: Vec<String>,
     limits: SidecarLimits,
 }
 
@@ -108,16 +110,33 @@ impl SidecarState {
                 request_cache_order: VecDeque::new(),
                 nonce_sequences: HashMap::new(),
                 current_block_height: 0,
+                current_block_hash: [0u8; 32],
                 current_unix_millis: 0,
+                gossip_peers: Vec::new(),
                 limits: SidecarLimits::default(),
             }),
         }
     }
 
     pub fn set_chain_head(&self, block_height: u64, unix_millis: u64) {
+        self.set_chain_head_with_hash(block_height, [0u8; 32], unix_millis);
+    }
+
+    pub fn set_chain_head_with_hash(
+        &self,
+        block_height: u64,
+        block_hash: [u8; 32],
+        unix_millis: u64,
+    ) {
         let mut inner = self.inner.write().unwrap();
         inner.current_block_height = block_height;
+        inner.current_block_hash = block_hash;
         inner.current_unix_millis = unix_millis;
+    }
+
+    pub fn set_gossip_peers(&self, peers: Vec<String>) {
+        let mut inner = self.inner.write().unwrap();
+        inner.gossip_peers = peers;
     }
 
     pub fn set_limits(&self, limits: SidecarLimits) {
@@ -212,13 +231,14 @@ impl SidecarState {
     // -----------------------------------------------------------------------
 
     pub fn get_validator_info(&self) -> v1::GetValidatorInfoResponse {
+        let inner = self.inner.read().unwrap();
         v1::GetValidatorInfoResponse {
             validator: Some(v1::ValidatorId {
                 name: self.name.clone(),
                 id: self.signer.validator_id().as_bytes().to_vec(),
                 pubkey: self.signer.public_key_bytes().to_vec(),
             }),
-            gossip_peers: Vec::new(),
+            gossip_peers: inner.gossip_peers.clone(),
         }
     }
 
@@ -230,7 +250,7 @@ impl SidecarState {
         let inner = self.inner.read().unwrap();
         v1::GetChainHeadResponse {
             block_height: inner.current_block_height,
-            block_hash: Vec::new(),
+            block_hash: inner.current_block_hash.to_vec(),
             unix_millis: inner.current_unix_millis,
         }
     }

@@ -67,20 +67,47 @@ impl FastPaySidecar for FastPaySidecarService {
     ) -> Result<Response<Self::SubmitFastPayStreamStream>, Status> {
         let req = request.into_inner();
         let resp = self.state.submit_fastpay(req);
+        let chain_head = self.state.get_chain_head();
 
-        let event = match resp.result {
-            Some(v1::submit_fast_pay_response::Result::Cert(cert)) => v1::SubmitFastPayEvent {
-                event: Some(v1::submit_fast_pay_event::Event::Cert(cert)),
-            },
-            Some(v1::submit_fast_pay_response::Result::Reject(reject)) => v1::SubmitFastPayEvent {
-                event: Some(v1::submit_fast_pay_event::Event::Reject(reject)),
-            },
+        let mut events: Vec<v1::SubmitFastPayEvent> = Vec::new();
+
+        match resp.result {
+            Some(v1::submit_fast_pay_response::Result::Cert(cert)) => {
+                events.push(v1::SubmitFastPayEvent {
+                    event: Some(v1::submit_fast_pay_event::Event::Lifecycle(
+                        v1::TxLifecycleUpdate {
+                            tx_hash: cert.tx_hash.clone(),
+                            stage: v1::tx_lifecycle_update::Stage::Accepted as i32,
+                            unix_millis: cert.created_unix_millis,
+                            block_height: chain_head.block_height,
+                        },
+                    )),
+                });
+                events.push(v1::SubmitFastPayEvent {
+                    event: Some(v1::submit_fast_pay_event::Event::Cert(cert.clone())),
+                });
+                events.push(v1::SubmitFastPayEvent {
+                    event: Some(v1::submit_fast_pay_event::Event::Lifecycle(
+                        v1::TxLifecycleUpdate {
+                            tx_hash: cert.tx_hash,
+                            stage: v1::tx_lifecycle_update::Stage::Certified as i32,
+                            unix_millis: cert.created_unix_millis,
+                            block_height: chain_head.block_height,
+                        },
+                    )),
+                });
+            }
+            Some(v1::submit_fast_pay_response::Result::Reject(reject)) => {
+                events.push(v1::SubmitFastPayEvent {
+                    event: Some(v1::submit_fast_pay_event::Event::Reject(reject)),
+                });
+            }
             None => {
                 return Err(Status::internal("empty result"));
             }
-        };
+        }
 
-        let stream = tokio_stream::once(Ok(event));
+        let stream = tokio_stream::iter(events.into_iter().map(Ok));
         Ok(Response::new(Box::pin(stream)))
     }
 
