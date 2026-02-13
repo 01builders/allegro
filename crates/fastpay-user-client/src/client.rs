@@ -1,13 +1,17 @@
+//! FastPayClient: high-level facade for send, poll, and reconcile workflows.
+
 use std::collections::HashMap;
 
-use fastpay_crypto::{Ed25519Certificate, compute_qc_hash};
+use fastpay_crypto::{compute_qc_hash, Ed25519Certificate};
 use fastpay_proto::v1;
 use fastpay_types::{Certificate, NonceKey, QuorumAssembler, QuorumCert, TxHash, ValidationError};
 use thiserror::Error;
 
 use crate::{
     cert_manager::{CertManager, CertManagerError},
-    transport::{MultiValidatorTransport, RequestMeta, RetryPolicy, SidecarTransport, TransportError},
+    transport::{
+        MultiValidatorTransport, RequestMeta, RetryPolicy, SidecarTransport, TransportError,
+    },
     tx_builder::{TxBuilder, TxBuilderError},
     wallet::{PendingStatus, PendingTx, WalletError, WalletState},
 };
@@ -101,11 +105,9 @@ where
         expiry: fastpay_types::Expiry,
         parent_qc: &Q,
     ) -> Result<Q, FastPayClientError> {
-        let parent_proto = self
-            .proto_qcs
-            .get(parent_qc.tx_hash())
-            .cloned()
-            .ok_or(FastPayClientError::MissingParentProtoQc(*parent_qc.tx_hash()))?;
+        let parent_proto = self.proto_qcs.get(parent_qc.tx_hash()).cloned().ok_or(
+            FastPayClientError::MissingParentProtoQc(*parent_qc.tx_hash()),
+        )?;
         self.send_payment_internal(
             sender,
             recipient,
@@ -143,7 +145,27 @@ where
     }
 
     pub async fn reconcile_once(&mut self) -> Result<(), FastPayClientError> {
-        let _ = self.transport.get_chain_head_all().await;
+        let responses = self.transport.get_chain_head_all().await;
+        let has_chain_head = responses.into_iter().any(|resp| resp.is_ok());
+        if has_chain_head {
+            let to_settle: Vec<TxHash> = self
+                .wallet
+                .pending_txs
+                .iter()
+                .filter_map(|(tx_hash, pending)| {
+                    if pending.status == PendingStatus::Pending
+                        && self.wallet.qcs.contains_key(tx_hash)
+                    {
+                        Some(*tx_hash)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            for tx_hash in to_settle {
+                self.wallet.mark_pending_settled(tx_hash)?;
+            }
+        }
         self.wallet.prune_caches();
         Ok(())
     }
@@ -200,7 +222,8 @@ where
             created_at: 0,
             status: PendingStatus::Pending,
         });
-        self.wallet.apply_pending_adjustment(asset, -(amount as i64));
+        self.wallet
+            .apply_pending_adjustment(asset, -(amount as i64));
 
         let request = v1::SubmitFastPayRequest {
             tx: Some(built.tx.clone()),
@@ -245,9 +268,9 @@ where
                         });
                     }
                     None => {
-                        last_reject = Some(FastPayClientError::Transport(TransportError::Internal(
-                            "missing submit result".to_string(),
-                        )));
+                        last_reject = Some(FastPayClientError::Transport(
+                            TransportError::Internal("missing submit result".to_string()),
+                        ));
                     }
                 },
                 Err(err) => {
@@ -287,11 +310,9 @@ where
 pub fn parse_ed25519_proto_cert(
     proto_cert: v1::ValidatorCertificate,
 ) -> Result<Ed25519Certificate, FastPayClientError> {
-    let signer = proto_cert
-        .signer
-        .ok_or(FastPayClientError::Validation(ValidationError::MissingField(
-            "signer",
-        )))?;
+    let signer = proto_cert.signer.ok_or(FastPayClientError::Validation(
+        ValidationError::MissingField("signer"),
+    ))?;
     let signer_id = fastpay_types::ValidatorId::from_slice(&signer.id)?;
     let tx_hash = fastpay_types::TxHash::from_slice(&proto_cert.tx_hash)?;
     let effects_hash = fastpay_types::EffectsHash::from_slice(&proto_cert.effects_hash)?;
@@ -324,7 +345,12 @@ where
             created_unix_millis: cert.created_at(),
         })
         .collect();
-    let qc_hash = compute_qc_hash(qc.tx_hash(), qc.effects_hash(), qc.threshold(), qc.certificates());
+    let qc_hash = compute_qc_hash(
+        qc.tx_hash(),
+        qc.effects_hash(),
+        qc.threshold(),
+        qc.certificates(),
+    );
     v1::QuorumCertificate {
         tx_hash: qc.tx_hash().as_bytes().to_vec(),
         effects_hash: qc.effects_hash().as_bytes().to_vec(),
@@ -344,14 +370,19 @@ mod tests {
         Address, AssetId, Expiry, NonceKey, QuorumCert, ValidatorId, VerificationContext,
     };
 
-    use super::{FastPayClient, parse_ed25519_proto_cert};
+    use super::{parse_ed25519_proto_cert, FastPayClient};
     use crate::{
         cert_manager::CertManager,
         transport::{MockTransport, MultiValidatorTransport},
-        wallet::WalletState,
+        wallet::{PendingStatus, WalletState},
     };
 
-    fn make_client() -> FastPayClient<MockTransport, fastpay_crypto::Ed25519Certificate, MultiCertQC, SimpleAssembler> {
+    fn make_client() -> FastPayClient<
+        MockTransport,
+        fastpay_crypto::Ed25519Certificate,
+        MultiCertQC,
+        SimpleAssembler,
+    > {
         let scenario = DemoScenario::new(1337, 1);
         let dave_info = scenario.dave.get_validator_info().validator.unwrap();
         let edgar_info = scenario.edgar.get_validator_info().validator.unwrap();
@@ -376,8 +407,10 @@ mod tests {
             MockTransport::new(scenario.dave),
             MockTransport::new(scenario.edgar),
         ]);
-        let wallet =
-            WalletState::<MultiCertQC>::new(Address::new([0x01; 20]), crate::CacheLimits::default());
+        let wallet = WalletState::<MultiCertQC>::new(
+            Address::new([0x01; 20]),
+            crate::CacheLimits::default(),
+        );
         let cert_manager = CertManager::<_, _, SimpleAssembler>::new(verify_ctx, 2);
         FastPayClient::new(
             transport,
@@ -404,5 +437,69 @@ mod tests {
             .await
             .expect("send payment should succeed");
         assert!(qc.is_complete());
+    }
+
+    #[tokio::test]
+    async fn reconcile_marks_qc_backed_pending_as_settled() {
+        let mut client = make_client();
+        let qc = client
+            .send_payment(
+                Address::new([0x01; 20]),
+                Address::new([0x02; 20]),
+                10,
+                AssetId::new([0xaa; 20]),
+                Expiry::MaxBlockHeight(100),
+            )
+            .await
+            .expect("send payment should succeed");
+        assert_eq!(
+            client
+                .wallet
+                .pending_txs
+                .get(qc.tx_hash())
+                .expect("pending tx should exist before reconciliation")
+                .status,
+            PendingStatus::Pending
+        );
+
+        client
+            .reconcile_once()
+            .await
+            .expect("reconciliation should succeed");
+        assert_eq!(
+            client
+                .wallet
+                .pending_txs
+                .get(qc.tx_hash())
+                .expect("pending tx should remain tracked after settlement")
+                .status,
+            PendingStatus::Settled
+        );
+    }
+
+    #[tokio::test]
+    async fn reconcile_prunes_settled_when_cache_limit_reached() {
+        let mut client = make_client();
+        client.wallet.cache_limits.max_pending_txs = 0;
+        let qc = client
+            .send_payment(
+                Address::new([0x01; 20]),
+                Address::new([0x02; 20]),
+                10,
+                AssetId::new([0xaa; 20]),
+                Expiry::MaxBlockHeight(100),
+            )
+            .await
+            .expect("send payment should succeed");
+        assert!(client.wallet.pending_txs.contains_key(qc.tx_hash()));
+
+        client
+            .reconcile_once()
+            .await
+            .expect("reconciliation should succeed");
+        assert!(
+            !client.wallet.pending_txs.contains_key(qc.tx_hash()),
+            "settled entries should be pruned when pending cache limit is zero"
+        );
     }
 }

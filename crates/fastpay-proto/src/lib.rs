@@ -1,5 +1,8 @@
+//! Generated protobuf types and serialization tests.
+
 pub mod convert;
 
+#[allow(clippy::large_enum_variant)]
 pub mod v1 {
     include!(concat!(env!("OUT_DIR"), "/tempo.fastpay.v1.rs"));
 }
@@ -18,10 +21,16 @@ mod tests {
                 data: b"tempo-opaque-bytes".to_vec(),
             }),
             intent: Some(v1::PaymentIntent {
-                sender: Some(v1::Address { data: [1u8; 20].to_vec() }),
-                recipient: Some(v1::Address { data: [2u8; 20].to_vec() }),
+                sender: Some(v1::Address {
+                    data: [1u8; 20].to_vec(),
+                }),
+                recipient: Some(v1::Address {
+                    data: [2u8; 20].to_vec(),
+                }),
                 amount: 10,
-                asset: Some(v1::AssetId { data: [3u8; 20].to_vec() }),
+                asset: Some(v1::AssetId {
+                    data: [3u8; 20].to_vec(),
+                }),
             }),
             nonce: Some(v1::Nonce2D {
                 nonce_key_be: [4u8; 32].to_vec(),
@@ -50,10 +59,16 @@ mod tests {
             tx_hash: [1u8; 32].to_vec(),
             effects_hash: [2u8; 32].to_vec(),
             effects: Some(v1::EffectsSummary {
-                sender: Some(v1::Address { data: [11u8; 20].to_vec() }),
-                recipient: Some(v1::Address { data: [12u8; 20].to_vec() }),
+                sender: Some(v1::Address {
+                    data: [11u8; 20].to_vec(),
+                }),
+                recipient: Some(v1::Address {
+                    data: [12u8; 20].to_vec(),
+                }),
                 amount: 42,
-                asset: Some(v1::AssetId { data: [13u8; 20].to_vec() }),
+                asset: Some(v1::AssetId {
+                    data: [13u8; 20].to_vec(),
+                }),
                 nonce: Some(v1::Nonce2D {
                     nonce_key_be: [14u8; 32].to_vec(),
                     nonce_seq: 8,

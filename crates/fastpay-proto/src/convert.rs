@@ -1,3 +1,5 @@
+//! Conversions between proto wire types and domain types.
+
 use fastpay_types::{
     Address, AssetId, ChainId, EffectsHash, Expiry, Nonce2D, NonceKey, PaymentIntent, QcHash,
     TxHash, ValidationError, ValidatorId,

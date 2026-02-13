@@ -1,3 +1,5 @@
+//! Integration tests for payment flows, rejections, and edge cases.
+
 use std::collections::HashMap;
 
 use fastpay_crypto::{Ed25519Certificate, Ed25519Signer, MultiCertQC, SimpleAssembler};
@@ -8,9 +10,9 @@ use fastpay_types::{
     VerificationContext,
 };
 use fastpay_user_client::{
-    CacheLimits, CertManager, CertManagerError, FastPayClient, FastPayClientError, MockTransport,
-    MultiValidatorTransport, SidecarTransport, WalletState, encode_payment_tempo_tx,
-    parse_ed25519_proto_cert,
+    encode_payment_tempo_tx, parse_ed25519_proto_cert, CacheLimits, CertManager, CertManagerError,
+    FastPayClient, FastPayClientError, MockTransport, MultiValidatorTransport, SidecarTransport,
+    WalletState,
 };
 
 async fn build_verify_context(
@@ -501,7 +503,8 @@ fn integration_bulletin_board_partial_sync_consistency() {
 
 #[test]
 fn integration_crash_restart_preserves_nonce_reservation() {
-    let mut wallet = WalletState::<MultiCertQC>::new(Address::new([0x01; 20]), CacheLimits::default());
+    let mut wallet =
+        WalletState::<MultiCertQC>::new(Address::new([0x01; 20]), CacheLimits::default());
     let key = NonceKey::new([0x5b; 32]);
     let seq = wallet.reserve_next_nonce(key);
     assert_eq!(seq, 0);

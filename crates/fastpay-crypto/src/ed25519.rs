@@ -1,6 +1,10 @@
+//! Ed25519 certificate and signer implementations.
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ed25519_dalek::{Signature, Signer as DalekSigner, SigningKey, Verifier as DalekVerifier, VerifyingKey};
+use ed25519_dalek::{
+    Signature, Signer as DalekSigner, SigningKey, Verifier as DalekVerifier, VerifyingKey,
+};
 use fastpay_types::{
     CertSigningContext, Certificate, CryptoError, EffectsHash, Signer, TxHash, ValidationError,
     ValidatorId, VerificationContext,
@@ -178,8 +182,8 @@ mod tests {
 
     use super::{Ed25519Signer, Signer};
     use crate::{
-        EffectsHashInput, TxHashInput, compute_effects_hash, compute_tx_hash,
-        hashing::compute_cert_message_digest,
+        compute_effects_hash, compute_tx_hash, hashing::compute_cert_message_digest,
+        EffectsHashInput, TxHashInput,
     };
     use fastpay_types::{Address, AssetId, NonceKey};
 
@@ -224,14 +228,8 @@ mod tests {
         };
         cert.verify(&verify_ctx).expect("verify should succeed");
 
-        let digest = compute_cert_message_digest(
-            1,
-            "tempo.fastpay.cert.v1",
-            1,
-            9,
-            &tx_hash,
-            &effects_hash,
-        );
+        let digest =
+            compute_cert_message_digest(1, "tempo.fastpay.cert.v1", 1, 9, &tx_hash, &effects_hash);
         assert_eq!(digest.len(), 32);
     }
 
@@ -270,7 +268,9 @@ mod tests {
             epoch: 9,
             committee: HashMap::new(),
         };
-        let err = cert.verify(&verify_ctx).expect_err("must reject unknown signer");
+        let err = cert
+            .verify(&verify_ctx)
+            .expect_err("must reject unknown signer");
         assert!(matches!(err, fastpay_types::CryptoError::UnknownSigner(_)));
     }
 }

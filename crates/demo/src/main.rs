@@ -1,11 +1,13 @@
+//! Demo binary: Alice→Bob→Carol chained payment flow with mock sidecars.
+
 use std::collections::HashMap;
 
 use fastpay_crypto::{Ed25519Certificate, MultiCertQC, SimpleAssembler};
 use fastpay_sidecar_mock::DemoScenario;
 use fastpay_types::{Address, Expiry, NonceKey, QuorumCert, ValidatorId, VerificationContext};
 use fastpay_user_client::{
-    CacheLimits, CertManager, FastPayClient, MockTransport, MultiValidatorTransport, WalletState,
-    SidecarTransport, parse_ed25519_proto_cert,
+    parse_ed25519_proto_cert, CacheLimits, CertManager, FastPayClient, MockTransport,
+    MultiValidatorTransport, SidecarTransport, WalletState,
 };
 use tracing::info;
 
@@ -38,8 +40,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dave_transport = MockTransport::new(scenario.dave);
     let edgar_transport = MockTransport::new(scenario.edgar);
 
-    let dave_info = dave_transport.get_validator_info().await?.validator.unwrap();
-    let edgar_info = edgar_transport.get_validator_info().await?.validator.unwrap();
+    let dave_info = dave_transport
+        .get_validator_info()
+        .await?
+        .validator
+        .unwrap();
+    let edgar_info = edgar_transport
+        .get_validator_info()
+        .await?
+        .validator
+        .unwrap();
     let mut committee = HashMap::new();
     committee.insert(
         ValidatorId::from_slice(&dave_info.id)?,

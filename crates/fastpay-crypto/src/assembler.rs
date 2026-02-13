@@ -1,6 +1,10 @@
+//! SimpleAssembler: collects certificates until quorum threshold is met.
+
 use std::collections::HashSet;
 
-use fastpay_types::{AssemblyError, Certificate, EffectsHash, QuorumAssembler, TxHash, ValidatorId};
+use fastpay_types::{
+    AssemblyError, Certificate, EffectsHash, QuorumAssembler, TxHash, ValidatorId,
+};
 
 use crate::{Ed25519Certificate, MultiCertQC};
 
@@ -68,8 +72,8 @@ mod tests {
     use fastpay_types::{CertSigningContext, QuorumAssembler, VerificationContext};
 
     use crate::{
-        EffectsHashInput, Ed25519Signer, SimpleAssembler, TxHashInput, compute_effects_hash,
-        compute_tx_hash,
+        compute_effects_hash, compute_tx_hash, Ed25519Signer, EffectsHashInput, SimpleAssembler,
+        TxHashInput,
     };
     use fastpay_types::{Address, AssetId, NonceKey, QuorumCert, Signer};
 
@@ -105,7 +109,10 @@ mod tests {
         let mut asm = SimpleAssembler::new(tx_hash, effects_hash, 2);
         asm.add_certificate(cert1).unwrap();
         let err = asm.add_certificate(cert2).expect_err("duplicate must fail");
-        assert!(matches!(err, fastpay_types::AssemblyError::DuplicateCertificate(_)));
+        assert!(matches!(
+            err,
+            fastpay_types::AssemblyError::DuplicateCertificate(_)
+        ));
     }
 
     #[test]

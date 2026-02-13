@@ -1,9 +1,13 @@
+//! MultiCertQC: quorum certificate as a collection of individual validator certs.
+
 use std::collections::HashSet;
 
-use fastpay_types::{Certificate, CryptoError, EffectsHash, QcHash, QuorumCert, TxHash, VerificationContext};
+use fastpay_types::{
+    Certificate, CryptoError, EffectsHash, QcHash, QuorumCert, TxHash, VerificationContext,
+};
 use serde::{Deserialize, Serialize};
 
-use crate::{Ed25519Certificate, compute_qc_hash};
+use crate::{compute_qc_hash, Ed25519Certificate};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MultiCertQC {
@@ -64,7 +68,9 @@ impl QuorumCert for MultiCertQC {
         let mut seen = HashSet::with_capacity(self.certs.len());
         for cert in &self.certs {
             if cert.tx_hash() != &self.tx_hash {
-                return Err(CryptoError::Message("certificate tx hash mismatch".to_string()));
+                return Err(CryptoError::Message(
+                    "certificate tx hash mismatch".to_string(),
+                ));
             }
             if cert.effects_hash() != &self.effects_hash {
                 return Err(CryptoError::Message(
@@ -82,7 +88,12 @@ impl QuorumCert for MultiCertQC {
     }
 
     fn qc_hash(&self) -> QcHash {
-        compute_qc_hash(&self.tx_hash, &self.effects_hash, self.threshold, &self.certs)
+        compute_qc_hash(
+            &self.tx_hash,
+            &self.effects_hash,
+            self.threshold,
+            &self.certs,
+        )
     }
 
     fn certificates(&self) -> &[Self::Cert] {

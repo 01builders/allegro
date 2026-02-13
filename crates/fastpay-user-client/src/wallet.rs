@@ -1,3 +1,5 @@
+//! WalletState: balance tracking, nonce reservation, pending tx management, and crash recovery.
+
 use std::collections::{HashMap, HashSet};
 
 use fastpay_types::{Address, AssetId, Certificate, NonceKey, QuorumCert, TxHash};
@@ -44,14 +46,21 @@ impl Default for CacheLimits {
 
 /// Durable state event used for journal replay.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum StateEvent {
+#[serde(bound(
+    serialize = "Q: Serialize, Q::Cert: Serialize",
+    deserialize = "Q: Deserialize<'de>, Q::Cert: Deserialize<'de>"
+))]
+pub enum StateEvent<Q>
+where
+    Q: QuorumCert,
+{
     NonceReserved { key: NonceKey, seq: u64 },
     NonceReleased { key: NonceKey, seq: u64 },
     NonceCommitted { key: NonceKey, seq: u64 },
-    PendingAdded { tx_hash: TxHash },
+    PendingAdded { pending: PendingTx },
     PendingSettled { tx_hash: TxHash },
-    QcStored { tx_hash: TxHash },
-    CertStored { tx_hash: TxHash },
+    QcStored { tx_hash: TxHash, qc: Q },
+    CertStored { tx_hash: TxHash, cert: Q::Cert },
     BalanceSet { asset: AssetId, amount: u64 },
     PendingAdjustment { asset: AssetId, delta: i64 },
 }
@@ -105,7 +114,7 @@ where
     pub received_certs: HashMap<TxHash, Vec<Q::Cert>>,
     pub qcs: HashMap<TxHash, Q>,
     pub cache_limits: CacheLimits,
-    pub journal: Vec<StateEvent>,
+    pub journal: Vec<StateEvent<Q>>,
 }
 
 impl<Q> WalletState<Q>
@@ -178,8 +187,7 @@ where
 
     pub fn add_pending_tx(&mut self, pending: PendingTx) {
         self.pending_txs.insert(pending.tx_hash, pending.clone());
-        self.journal
-            .push(StateEvent::PendingAdded { tx_hash: pending.tx_hash });
+        self.journal.push(StateEvent::PendingAdded { pending });
     }
 
     pub fn mark_pending_settled(&mut self, tx_hash: TxHash) -> Result<(), WalletError> {
@@ -194,8 +202,8 @@ where
 
     pub fn store_qc(&mut self, qc: Q) {
         let tx_hash = *qc.tx_hash();
-        self.qcs.insert(tx_hash, qc);
-        self.journal.push(StateEvent::QcStored { tx_hash });
+        self.qcs.insert(tx_hash, qc.clone());
+        self.journal.push(StateEvent::QcStored { tx_hash, qc });
     }
 
     pub fn record_certificate(&mut self, tx_hash: TxHash, cert: Q::Cert) {
@@ -204,15 +212,14 @@ where
         if certs.iter().any(|c| c.signer() == &signer) {
             return;
         }
-        certs.push(cert);
-        self.journal.push(StateEvent::CertStored { tx_hash });
+        certs.push(cert.clone());
+        self.journal.push(StateEvent::CertStored { tx_hash, cert });
     }
 
     pub fn record_qc(&mut self, qc: Q) {
         let tx_hash = *qc.tx_hash();
-        self.qcs.insert(tx_hash, qc);
-        self.pending_txs.remove(&tx_hash);
-        self.journal.push(StateEvent::QcStored { tx_hash });
+        self.qcs.insert(tx_hash, qc.clone());
+        self.journal.push(StateEvent::QcStored { tx_hash, qc });
     }
 
     pub fn get_qc(&self, tx_hash: &TxHash) -> Option<&Q> {
@@ -250,7 +257,7 @@ where
     pub fn recover_from_snapshot_and_journal(
         &mut self,
         snapshot: WalletSnapshot<Q>,
-        events: &[StateEvent],
+        events: &[StateEvent<Q>],
     ) {
         self.address = snapshot.address;
         self.base_balances = snapshot.base_balances;
@@ -269,7 +276,7 @@ where
         }
     }
 
-    fn apply_event(&mut self, event: StateEvent) {
+    fn apply_event(&mut self, event: StateEvent<Q>) {
         match event {
             StateEvent::NonceReserved { key, seq } => {
                 self.reserved_nonces.insert((key, seq));
@@ -281,16 +288,25 @@ where
             StateEvent::NonceReleased { key, seq } | StateEvent::NonceCommitted { key, seq } => {
                 self.reserved_nonces.remove(&(key, seq));
             }
-            StateEvent::PendingAdded { .. } => {}
+            StateEvent::PendingAdded { pending } => {
+                self.pending_txs.insert(pending.tx_hash, pending);
+            }
             StateEvent::PendingSettled { tx_hash } => {
                 if let Some(tx) = self.pending_txs.get_mut(&tx_hash) {
                     tx.status = PendingStatus::Settled;
                 }
             }
-            StateEvent::QcStored { tx_hash } => {
-                self.pending_txs.remove(&tx_hash);
+            StateEvent::QcStored { tx_hash, qc } => {
+                self.qcs.insert(tx_hash, qc);
             }
-            StateEvent::CertStored { .. } => {}
+            StateEvent::CertStored { tx_hash, cert } => {
+                let signer = *cert.signer();
+                let certs = self.received_certs.entry(tx_hash).or_default();
+                if certs.iter().any(|existing| existing.signer() == &signer) {
+                    return;
+                }
+                certs.push(cert);
+            }
             StateEvent::BalanceSet { asset, amount } => {
                 self.base_balances.insert(asset, amount);
             }
@@ -342,11 +358,7 @@ fn prune_certs<C>(
     }
 }
 
-fn prune_qcs<Q>(
-    qcs: &mut HashMap<TxHash, Q>,
-    max: usize,
-    pending: &HashMap<TxHash, PendingTx>,
-) {
+fn prune_qcs<Q>(qcs: &mut HashMap<TxHash, Q>, max: usize, pending: &HashMap<TxHash, PendingTx>) {
     if qcs.len() <= max {
         return;
     }
@@ -450,7 +462,7 @@ mod tests {
         });
         wallet.record_qc(qc.clone());
         assert!(wallet.get_qc(qc.tx_hash()).is_some());
-        assert!(wallet.pending_txs.get(qc.tx_hash()).is_none());
+        assert!(wallet.pending_txs.contains_key(qc.tx_hash()));
     }
 
     #[test]
@@ -480,5 +492,42 @@ mod tests {
         assert_eq!(recovered.base_balance(asset), 15);
         assert!(recovered.nonce_sequences.get(&key).copied().unwrap_or(0) >= 1);
         assert!(recovered.get_qc(qc.tx_hash()).is_some());
+    }
+
+    #[test]
+    fn replay_delta_reconstructs_pending_and_certs() {
+        let address = Address::new([0x01; 20]);
+        let (qc, asset, key, seq) = make_qc();
+        let mut wallet = WalletState::<MultiCertQC>::new(address, CacheLimits::default());
+        wallet.set_base_balance(asset, 15);
+
+        let snapshot = wallet.snapshot();
+        let checkpoint = wallet.journal.len();
+
+        wallet.reserve_next_nonce(key);
+        wallet.add_pending_tx(PendingTx {
+            tx_hash: *qc.tx_hash(),
+            asset,
+            amount: 10,
+            nonce_key: key,
+            nonce_seq: seq,
+            created_at: 1,
+            status: PendingStatus::Pending,
+        });
+        wallet.record_certificate(*qc.tx_hash(), qc.certificates()[0].clone());
+
+        let replay_events = wallet.journal[checkpoint..].to_vec();
+        let mut recovered = WalletState::<MultiCertQC>::new(address, CacheLimits::default());
+        recovered.recover_from_snapshot_and_journal(snapshot, &replay_events);
+
+        assert!(recovered.pending_txs.contains_key(qc.tx_hash()));
+        assert_eq!(
+            recovered
+                .received_certs
+                .get(qc.tx_hash())
+                .map(Vec::len)
+                .unwrap_or(0),
+            1
+        );
     }
 }

@@ -1,3 +1,5 @@
+//! Core traits and types for FastPay protocol objects.
+
 pub mod error;
 pub mod ids;
 pub mod traits;

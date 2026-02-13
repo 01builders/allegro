@@ -1,3 +1,5 @@
+//! Wrapper types for addresses, hashes, and other fixed-size identifiers.
+
 use std::fmt;
 
 use serde::{Deserialize, Serialize};

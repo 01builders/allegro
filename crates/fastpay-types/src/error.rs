@@ -1,3 +1,5 @@
+//! Error types for crypto, QC assembly, and validation operations.
+
 use thiserror::Error;
 
 use crate::ids::ValidatorId;

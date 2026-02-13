@@ -1,3 +1,5 @@
+//! Pre-built demo scenarios with Alice, Bob, Carol accounts and validator sidecars.
+
 use std::collections::HashMap;
 
 use fastpay_crypto::Ed25519Signer;

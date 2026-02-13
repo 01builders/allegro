@@ -1,3 +1,5 @@
+//! Transport trait and implementations for sidecar communication.
+
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -7,6 +9,8 @@ use fastpay_sidecar_mock::MockSidecar;
 use futures::future::join_all;
 use rand::Rng;
 use thiserror::Error;
+#[cfg(not(target_arch = "wasm32"))]
+use tonic::{metadata::MetadataValue, Code};
 
 /// Per-request metadata used for idempotent retries and deadline control.
 #[derive(Debug, Clone)]
@@ -96,11 +100,138 @@ pub trait SidecarTransport {
         request: v1::GetBulletinBoardRequest,
     ) -> Result<v1::GetBulletinBoardResponse, TransportError>;
 
-    async fn get_validator_info(
-        &self,
-    ) -> Result<v1::GetValidatorInfoResponse, TransportError>;
+    async fn get_validator_info(&self) -> Result<v1::GetValidatorInfoResponse, TransportError>;
 
     async fn get_chain_head(&self) -> Result<v1::GetChainHeadResponse, TransportError>;
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+const SUBMIT_FASTPAY_PATH: &str = "/tempo.fastpay.v1.FastPaySidecar/SubmitFastPay";
+#[cfg(not(target_arch = "wasm32"))]
+const GET_BULLETIN_BOARD_PATH: &str = "/tempo.fastpay.v1.FastPaySidecar/GetBulletinBoard";
+#[cfg(not(target_arch = "wasm32"))]
+const GET_VALIDATOR_INFO_PATH: &str = "/tempo.fastpay.v1.FastPaySidecar/GetValidatorInfo";
+#[cfg(not(target_arch = "wasm32"))]
+const GET_CHAIN_HEAD_PATH: &str = "/tempo.fastpay.v1.FastPaySidecar/GetChainHead";
+
+/// Native gRPC transport using tonic unary calls against a validator sidecar endpoint.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug, Clone)]
+pub struct GrpcTransport {
+    endpoint: String,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl GrpcTransport {
+    pub fn new(endpoint: impl Into<String>) -> Self {
+        Self {
+            endpoint: endpoint.into(),
+        }
+    }
+
+    pub fn endpoint(&self) -> &str {
+        &self.endpoint
+    }
+
+    fn read_request_meta(operation: &str) -> RequestMeta {
+        RequestMeta {
+            client_request_id: format!("read-{operation}"),
+            timeout_ms: 3_000,
+            retry_policy: RetryPolicy::default(),
+        }
+    }
+
+    async fn unary_call<Req, Resp>(
+        &self,
+        path: &'static str,
+        request: Req,
+        client_request_id: String,
+        timeout_ms: u64,
+    ) -> Result<Resp, TransportError>
+    where
+        Req: prost::Message + Default + Clone + Send + Sync + 'static,
+        Resp: prost::Message + Default + Send + 'static,
+    {
+        let endpoint =
+            validate_endpoint(&self.endpoint)?.connect_timeout(Duration::from_millis(timeout_ms));
+        let channel = endpoint.connect().await.map_err(map_connect_error)?;
+        let mut grpc = tonic::client::Grpc::new(channel);
+        let mut req = tonic::Request::new(request);
+        if let Ok(value) = MetadataValue::try_from(client_request_id) {
+            req.metadata_mut().insert("x-client-request-id", value);
+        }
+        let path = tonic::codegen::http::uri::PathAndQuery::from_static(path);
+        let response = tokio::time::timeout(
+            Duration::from_millis(timeout_ms),
+            grpc.unary(req, path, tonic::codec::ProstCodec::default()),
+        )
+        .await
+        .map_err(|_| TransportError::Timeout)?
+        .map_err(map_status)?;
+        Ok(response.into_inner())
+    }
+
+    async fn unary_call_with_retry<Req, Resp>(
+        &self,
+        path: &'static str,
+        request: Req,
+        meta: RequestMeta,
+    ) -> Result<Resp, TransportError>
+    where
+        Req: prost::Message + Default + Clone + Send + Sync + 'static,
+        Resp: prost::Message + Default + Send + 'static,
+    {
+        let client_request_id = meta.client_request_id.clone();
+        let timeout_ms = meta.timeout_ms;
+        retry_with_backoff(meta, || async {
+            self.unary_call(path, request.clone(), client_request_id.clone(), timeout_ms)
+                .await
+        })
+        .await
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[async_trait(?Send)]
+impl SidecarTransport for GrpcTransport {
+    async fn submit_fastpay(
+        &self,
+        request: v1::SubmitFastPayRequest,
+        meta: RequestMeta,
+    ) -> Result<v1::SubmitFastPayResponse, TransportError> {
+        self.unary_call_with_retry(SUBMIT_FASTPAY_PATH, request, meta)
+            .await
+    }
+
+    async fn get_bulletin_board(
+        &self,
+        request: v1::GetBulletinBoardRequest,
+    ) -> Result<v1::GetBulletinBoardResponse, TransportError> {
+        self.unary_call_with_retry(
+            GET_BULLETIN_BOARD_PATH,
+            request,
+            Self::read_request_meta("bulletin-board"),
+        )
+        .await
+    }
+
+    async fn get_validator_info(&self) -> Result<v1::GetValidatorInfoResponse, TransportError> {
+        self.unary_call_with_retry(
+            GET_VALIDATOR_INFO_PATH,
+            v1::GetValidatorInfoRequest::default(),
+            Self::read_request_meta("validator-info"),
+        )
+        .await
+    }
+
+    async fn get_chain_head(&self) -> Result<v1::GetChainHeadResponse, TransportError> {
+        self.unary_call_with_retry(
+            GET_CHAIN_HEAD_PATH,
+            v1::GetChainHeadRequest::default(),
+            Self::read_request_meta("chain-head"),
+        )
+        .await
+    }
 }
 
 /// In-memory transport backed by `MockSidecar`, used for Phase 1 and tests.
@@ -116,10 +247,7 @@ impl MockTransport {
         }
     }
 
-    fn with_sidecar<R>(
-        &self,
-        f: impl FnOnce(&mut MockSidecar) -> R,
-    ) -> Result<R, TransportError> {
+    fn with_sidecar<R>(&self, f: impl FnOnce(&mut MockSidecar) -> R) -> Result<R, TransportError> {
         let mut lock = self
             .sidecar
             .lock()
@@ -148,9 +276,7 @@ impl SidecarTransport for MockTransport {
         self.with_sidecar(|sidecar| sidecar.get_bulletin_board(request))
     }
 
-    async fn get_validator_info(
-        &self,
-    ) -> Result<v1::GetValidatorInfoResponse, TransportError> {
+    async fn get_validator_info(&self) -> Result<v1::GetValidatorInfoResponse, TransportError> {
         self.with_sidecar(|sidecar| sidecar.get_validator_info())
     }
 
@@ -249,7 +375,9 @@ where
 }
 
 fn backoff_delay_ms(attempt: u32, policy: &RetryPolicy) -> u64 {
-    let exp = policy.initial_backoff_ms.saturating_mul(2u64.saturating_pow(attempt));
+    let exp = policy
+        .initial_backoff_ms
+        .saturating_mul(2u64.saturating_pow(attempt));
     let capped = exp.min(policy.max_backoff_ms);
     let jitter = if policy.jitter_ms == 0 {
         0
@@ -270,11 +398,42 @@ async fn sleep_millis(ms: u64) {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn map_connect_error(err: tonic::transport::Error) -> TransportError {
+    TransportError::Unavailable(err.to_string())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn validate_endpoint(endpoint: &str) -> Result<tonic::transport::Endpoint, TransportError> {
+    tonic::transport::Endpoint::from_shared(endpoint.to_string())
+        .map_err(|err| TransportError::Validation(format!("invalid endpoint: {err}")))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn map_status(status: tonic::Status) -> TransportError {
+    match status.code() {
+        Code::DeadlineExceeded => TransportError::Timeout,
+        Code::Unavailable => TransportError::Unavailable(status.message().to_string()),
+        Code::InvalidArgument
+        | Code::FailedPrecondition
+        | Code::PermissionDenied
+        | Code::Unauthenticated
+        | Code::OutOfRange
+        | Code::NotFound => TransportError::Rejected {
+            code: status.code() as i32,
+            message: status.message().to_string(),
+        },
+        _ => TransportError::Internal(status.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use fastpay_sidecar_mock::DemoScenario;
 
-    use super::{MockTransport, MultiValidatorTransport, RequestMeta, RetryPolicy, SidecarTransport};
+    use super::{
+        MockTransport, MultiValidatorTransport, RequestMeta, RetryPolicy, SidecarTransport,
+    };
 
     fn make_transport() -> MockTransport {
         let scenario = DemoScenario::new(1337, 1);
@@ -308,5 +467,53 @@ mod tests {
         let transport = make_transport();
         let info = transport.get_validator_info().await.expect("must succeed");
         assert!(info.validator.is_some());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[tokio::test]
+    async fn grpc_transport_rejects_invalid_endpoint() {
+        let err = super::validate_endpoint("not a uri").expect_err("endpoint must be invalid");
+        assert!(
+            matches!(err, super::TransportError::Validation(_)),
+            "{err:?}"
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[tokio::test]
+    async fn grpc_transport_maps_unreachable_endpoint_to_unavailable_or_timeout() {
+        let transport = super::GrpcTransport::new("http://127.0.0.1:1");
+        let err = transport
+            .get_chain_head()
+            .await
+            .expect_err("unreachable endpoint should fail");
+        assert!(
+            matches!(
+                err,
+                super::TransportError::Unavailable(_) | super::TransportError::Timeout
+            ),
+            "unexpected error variant: {err:?}"
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn grpc_transport_path_constants_are_stable() {
+        assert_eq!(
+            super::SUBMIT_FASTPAY_PATH,
+            "/tempo.fastpay.v1.FastPaySidecar/SubmitFastPay"
+        );
+        assert_eq!(
+            super::GET_BULLETIN_BOARD_PATH,
+            "/tempo.fastpay.v1.FastPaySidecar/GetBulletinBoard"
+        );
+        assert_eq!(
+            super::GET_VALIDATOR_INFO_PATH,
+            "/tempo.fastpay.v1.FastPaySidecar/GetValidatorInfo"
+        );
+        assert_eq!(
+            super::GET_CHAIN_HEAD_PATH,
+            "/tempo.fastpay.v1.FastPaySidecar/GetChainHead"
+        );
     }
 }

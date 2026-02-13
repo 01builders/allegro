@@ -1,6 +1,8 @@
+//! TxBuilder: construct FastPayTx with payment, nonce, expiry, and parent QC.
+
 use std::collections::HashMap;
 
-use fastpay_crypto::{EffectsHashInput, TxHashInput, compute_effects_hash, compute_tx_hash};
+use fastpay_crypto::{compute_effects_hash, compute_tx_hash, EffectsHashInput, TxHashInput};
 use fastpay_proto::v1;
 use fastpay_types::{
     Address, AssetId, Expiry, NonceKey, QcHash, QuorumCert, TxHash, ValidationError,
@@ -98,7 +100,9 @@ impl TxBuilder {
     }
 
     pub fn build(self) -> Result<BuiltTx, TxBuilderError> {
-        let chain_id = self.chain_id.ok_or(TxBuilderError::MissingField("chain_id"))?;
+        let chain_id = self
+            .chain_id
+            .ok_or(TxBuilderError::MissingField("chain_id"))?;
         let sender = self.sender.ok_or(TxBuilderError::MissingField("sender"))?;
         let recipient = self
             .recipient
@@ -296,7 +300,8 @@ mod tests {
         let cert_b = signer_b
             .sign(&sign_ctx, &built_parent.tx_hash, &built_parent.effects_hash)
             .unwrap();
-        let mut assembler = SimpleAssembler::new(built_parent.tx_hash, built_parent.effects_hash, 2);
+        let mut assembler =
+            SimpleAssembler::new(built_parent.tx_hash, built_parent.effects_hash, 2);
         assembler.add_certificate(cert_a).unwrap();
         assembler.add_certificate(cert_b).unwrap();
         let qc: MultiCertQC = assembler.finalize().unwrap();

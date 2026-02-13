@@ -1,4 +1,9 @@
-use std::{collections::{HashMap, HashSet}, marker::PhantomData};
+//! CertManager: collect, verify, and assemble certificates into quorum certs.
+
+use std::{
+    collections::{HashMap, HashSet},
+    marker::PhantomData,
+};
 
 use fastpay_types::{
     AssemblyError, Certificate, CryptoError, EffectsHash, QuorumAssembler, QuorumCert, TxHash,
@@ -72,7 +77,10 @@ where
 
         let signer_hex = cert.signer().to_string();
         let entry = self.certificates.entry(expected_tx_hash).or_default();
-        if entry.iter().any(|existing| existing.signer() == cert.signer()) {
+        if entry
+            .iter()
+            .any(|existing| existing.signer() == cert.signer())
+        {
             return Err(CertManagerError::DuplicateSigner(signer_hex));
         }
         entry.push(cert);
@@ -143,7 +151,9 @@ mod tests {
     use crate::tx_builder::TxBuilder;
     use fastpay_types::{Address, AssetId};
 
-    fn make_cert_and_ctx(epoch: u64) -> (
+    fn make_cert_and_ctx(
+        epoch: u64,
+    ) -> (
         fastpay_crypto::Ed25519Certificate,
         fastpay_crypto::Ed25519Certificate,
         fastpay_types::TxHash,
@@ -185,15 +195,23 @@ mod tests {
             epoch,
             committee,
         };
-        (cert_a, cert_b, built.tx_hash, built.effects_hash, verify_ctx)
+        (
+            cert_a,
+            cert_b,
+            built.tx_hash,
+            built.effects_hash,
+            verify_ctx,
+        )
     }
 
     #[test]
     fn assembles_qc_when_threshold_met() {
         let (cert_a, cert_b, tx_hash, effects_hash, verify_ctx) = make_cert_and_ctx(1);
         let mut mgr = CertManager::<_, _, SimpleAssembler>::new(verify_ctx, 2);
-        mgr.collect_certificate(tx_hash, effects_hash, cert_a).unwrap();
-        mgr.collect_certificate(tx_hash, effects_hash, cert_b).unwrap();
+        mgr.collect_certificate(tx_hash, effects_hash, cert_a)
+            .unwrap();
+        mgr.collect_certificate(tx_hash, effects_hash, cert_b)
+            .unwrap();
         let qc = mgr.assemble_qc(tx_hash, effects_hash).unwrap();
         assert!(qc.is_complete());
         assert_eq!(qc.cert_count(), 2);
@@ -245,8 +263,7 @@ mod tests {
 
         let (_, _, tx_hash, effects_hash, mut verify_ctx_epoch_mismatch) = make_cert_and_ctx(1);
         verify_ctx_epoch_mismatch.epoch = 2;
-        let mut mgr =
-            CertManager::<_, _, SimpleAssembler>::new(verify_ctx_epoch_mismatch, 2);
+        let mut mgr = CertManager::<_, _, SimpleAssembler>::new(verify_ctx_epoch_mismatch, 2);
         let err = mgr
             .collect_certificate(tx_hash, effects_hash, cert_a)
             .expect_err("wrong epoch context should fail verification");

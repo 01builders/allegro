@@ -1,3 +1,5 @@
+//! Trait definitions for Certificate, QuorumCert, QuorumAssembler, and Signer.
+
 use std::collections::HashMap;
 
 use crate::{

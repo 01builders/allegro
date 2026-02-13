@@ -1,8 +1,10 @@
+//! MockSidecar: in-memory validator with balance tracking, equivocation guard, and bulletin board.
+
 use std::collections::{HashMap, HashSet};
 
 use fastpay_crypto::{
-    EffectsHashInput, Ed25519Signer, TxHashInput, compute_effects_hash, compute_qc_hash,
-    compute_tx_hash,
+    compute_effects_hash, compute_qc_hash, compute_tx_hash, Ed25519Signer, EffectsHashInput,
+    TxHashInput,
 };
 use fastpay_proto::v1;
 use fastpay_types::{
@@ -156,12 +158,16 @@ impl MockSidecar {
         let contention_key = (decoded.sender, nonce_key, nonce_seq);
         if let Some(existing) = self.signed_txs.get(&contention_key) {
             if existing != &tx_hash {
-                return Err(reject(v1::RejectCode::Equivocation, "equivocation detected"));
+                return Err(reject(
+                    v1::RejectCode::Equivocation,
+                    "equivocation detected",
+                ));
             }
         }
         self.validate_nonce(decoded.sender, nonce_key, nonce_seq)?;
 
-        let available = self.available_balance(decoded.sender, decoded.asset, &req.parent_qcs, &tx)?;
+        let available =
+            self.available_balance(decoded.sender, decoded.asset, &req.parent_qcs, &tx)?;
         if available < decoded.amount as i128 {
             return Err(reject(
                 v1::RejectCode::InsufficientFunds,
@@ -276,7 +282,10 @@ impl MockSidecar {
             None
         } else {
             Some(QcHash::from_slice(&tx.parent_qc_hash).map_err(|_| {
-                reject(v1::RejectCode::InvalidFormat, "parent_qc_hash must be 32 bytes")
+                reject(
+                    v1::RejectCode::InvalidFormat,
+                    "parent_qc_hash must be 32 bytes",
+                )
             })?)
         };
         Ok(compute_tx_hash(&TxHashInput {
@@ -356,10 +365,9 @@ impl MockSidecar {
             self.known_qcs.insert(qc_hash, qc.clone());
             for cert in &qc.certs {
                 if let Some(effects) = &cert.effects {
-                    let recipient =
-                        to_address(effects.recipient.as_ref()).map_err(|_| {
-                            reject(v1::RejectCode::InvalidParentQc, "invalid parent recipient")
-                        })?;
+                    let recipient = to_address(effects.recipient.as_ref()).map_err(|_| {
+                        reject(v1::RejectCode::InvalidParentQc, "invalid parent recipient")
+                    })?;
                     let cert_asset = to_asset(effects.asset.as_ref()).map_err(|_| {
                         reject(v1::RejectCode::InvalidParentQc, "invalid parent asset")
                     })?;
@@ -419,7 +427,11 @@ impl MockSidecar {
     }
 
     fn store_cert_dedup_by_signer(&mut self, tx_hash: TxHash, cert: v1::ValidatorCertificate) {
-        let signer_id = cert.signer.as_ref().map(|s| s.id.clone()).unwrap_or_default();
+        let signer_id = cert
+            .signer
+            .as_ref()
+            .map(|s| s.id.clone())
+            .unwrap_or_default();
         let entry = self.certs.entry(tx_hash).or_default();
         if entry
             .iter()
@@ -559,8 +571,8 @@ mod tests {
     use std::collections::HashMap;
 
     use fastpay_crypto::{
-        Ed25519Signer, EffectsHashInput, TxHashInput, compute_effects_hash, compute_qc_hash,
-        compute_tx_hash,
+        compute_effects_hash, compute_qc_hash, compute_tx_hash, Ed25519Signer, EffectsHashInput,
+        TxHashInput,
     };
     use fastpay_proto::v1;
     use fastpay_types::{Address, AssetId, CertSigningContext, NonceKey, Signer, TxHash};
@@ -598,7 +610,8 @@ mod tests {
         balances.insert(alice, HashMap::from([(asset, 15)]));
         balances.insert(bob, HashMap::from([(asset, 5)]));
         balances.insert(carol, HashMap::from([(asset, 5)]));
-        let signer = Ed25519Signer::from_seed(fastpay_types::ValidatorId::new([0x44; 32]), [7u8; 32]);
+        let signer =
+            Ed25519Signer::from_seed(fastpay_types::ValidatorId::new([0x44; 32]), [7u8; 32]);
         let ctx = CertSigningContext {
             chain_id: 1337,
             domain_tag: "tempo.fastpay.cert.v1",
@@ -610,7 +623,11 @@ mod tests {
         (sidecar, payment_ab, payment_ac)
     }
 
-    fn submit_request(payment: &DecodedPayment, seq: u64, expiry_height: u64) -> v1::SubmitFastPayRequest {
+    fn submit_request(
+        payment: &DecodedPayment,
+        seq: u64,
+        expiry_height: u64,
+    ) -> v1::SubmitFastPayRequest {
         v1::SubmitFastPayRequest {
             tx: Some(v1::FastPayTx {
                 chain_id: Some(v1::ChainId { value: 1337 }),

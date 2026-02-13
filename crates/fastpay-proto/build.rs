@@ -1,3 +1,5 @@
+//! Build script to generate Rust types from proto files using prost.
+
 use std::path::PathBuf;
 
 fn main() {
