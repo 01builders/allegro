@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use alloy_signer_local::PrivateKeySigner;
 use fastpay_crypto::{compute_qc_hash, Ed25519Certificate};
 use fastpay_proto::v1;
 use fastpay_types::{Certificate, NonceKey, QuorumAssembler, QuorumCert, TxHash, ValidationError};
@@ -35,6 +36,8 @@ pub enum FastPayClientError {
     ThresholdNotMet { threshold: u32, have: usize },
     #[error("missing parent proto qc for tx {0}")]
     MissingParentProtoQc(TxHash),
+    #[error("missing sender private key for address {0}")]
+    MissingSenderPrivateKey(fastpay_types::Address),
 }
 
 /// High-level FastPay client that coordinates tx building, transport fan-out,
@@ -54,6 +57,7 @@ where
     default_nonce_key: NonceKey,
     cert_parser: fn(v1::ValidatorCertificate) -> Result<C, FastPayClientError>,
     proto_qcs: HashMap<TxHash, v1::QuorumCertificate>,
+    sender_private_keys: HashMap<fastpay_types::Address, [u8; 32]>,
 }
 
 impl<T, C, Q, A> FastPayClient<T, C, Q, A>
@@ -81,7 +85,24 @@ where
             default_nonce_key,
             cert_parser,
             proto_qcs: HashMap::new(),
+            sender_private_keys: HashMap::new(),
         }
+    }
+
+    pub fn with_sender_private_key(
+        mut self,
+        sender: fastpay_types::Address,
+        private_key: [u8; 32],
+    ) -> Result<Self, FastPayClientError> {
+        let signer = PrivateKeySigner::from_slice(&private_key)
+            .map_err(|err| FastPayClientError::Builder(TxBuilderError::Signing(err.to_string())))?;
+        if signer.address().as_slice() != sender.as_bytes() {
+            return Err(FastPayClientError::Builder(TxBuilderError::Signing(
+                "sender private key does not match sender address".to_string(),
+            )));
+        }
+        self.sender_private_keys.insert(sender, private_key);
+        Ok(self)
     }
 
     pub async fn send_payment(
@@ -201,8 +222,15 @@ where
         parent: Option<(Q, v1::QuorumCertificate)>,
     ) -> Result<Q, FastPayClientError> {
         let seq = self.wallet.reserve_next_nonce(self.default_nonce_key);
+        let sender_private_key = self
+            .sender_private_keys
+            .get(&sender)
+            .copied()
+            .ok_or(FastPayClientError::MissingSenderPrivateKey(sender))?;
+
         let mut builder = TxBuilder::new(self.chain_id)
             .with_payment(sender, recipient, amount, asset)
+            .with_sender_private_key(sender_private_key)
             .with_nonce_seq(self.default_nonce_key, seq)
             .with_expiry(expiry);
         let parent_proto_qc = if let Some((parent_qc, parent_proto)) = parent {
@@ -366,9 +394,7 @@ mod tests {
 
     use fastpay_crypto::{MultiCertQC, SimpleAssembler};
     use fastpay_sidecar_mock::DemoScenario;
-    use fastpay_types::{
-        Address, AssetId, Expiry, NonceKey, QuorumCert, ValidatorId, VerificationContext,
-    };
+    use fastpay_types::{Expiry, NonceKey, QuorumCert, ValidatorId, VerificationContext};
 
     use super::{parse_ed25519_proto_cert, FastPayClient};
     use crate::{
@@ -407,10 +433,9 @@ mod tests {
             MockTransport::new(scenario.dave),
             MockTransport::new(scenario.edgar),
         ]);
-        let wallet = WalletState::<MultiCertQC>::new(
-            Address::new([0x01; 20]),
-            crate::CacheLimits::default(),
-        );
+        let accounts = scenario.accounts;
+        let account_keys = scenario.account_keys;
+        let wallet = WalletState::<MultiCertQC>::new(accounts.alice, crate::CacheLimits::default());
         let cert_manager = CertManager::<_, _, SimpleAssembler>::new(verify_ctx, 2);
         FastPayClient::new(
             transport,
@@ -421,17 +446,20 @@ mod tests {
             NonceKey::new([0x5b; 32]),
             parse_ed25519_proto_cert,
         )
+        .with_sender_private_key(accounts.alice, account_keys.alice)
+        .expect("valid sender key")
     }
 
     #[tokio::test]
     async fn send_payment_success() {
         let mut client = make_client();
+        let scenario = DemoScenario::new(1337, 1);
         let qc = client
             .send_payment(
-                Address::new([0x01; 20]),
-                Address::new([0x02; 20]),
+                scenario.accounts.alice,
+                scenario.accounts.bob,
                 10,
-                AssetId::new([0xaa; 20]),
+                scenario.accounts.asset,
                 Expiry::MaxBlockHeight(100),
             )
             .await
@@ -442,12 +470,13 @@ mod tests {
     #[tokio::test]
     async fn reconcile_marks_qc_backed_pending_as_settled() {
         let mut client = make_client();
+        let scenario = DemoScenario::new(1337, 1);
         let qc = client
             .send_payment(
-                Address::new([0x01; 20]),
-                Address::new([0x02; 20]),
+                scenario.accounts.alice,
+                scenario.accounts.bob,
                 10,
-                AssetId::new([0xaa; 20]),
+                scenario.accounts.asset,
                 Expiry::MaxBlockHeight(100),
             )
             .await
@@ -480,13 +509,14 @@ mod tests {
     #[tokio::test]
     async fn reconcile_prunes_settled_when_cache_limit_reached() {
         let mut client = make_client();
+        let scenario = DemoScenario::new(1337, 1);
         client.wallet.cache_limits.max_pending_txs = 0;
         let qc = client
             .send_payment(
-                Address::new([0x01; 20]),
-                Address::new([0x02; 20]),
+                scenario.accounts.alice,
+                scenario.accounts.bob,
                 10,
-                AssetId::new([0xaa; 20]),
+                scenario.accounts.asset,
                 Expiry::MaxBlockHeight(100),
             )
             .await

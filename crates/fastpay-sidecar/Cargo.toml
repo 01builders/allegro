@@ -17,6 +17,9 @@ clap = { version = "4", features = ["derive"] }
 hex.workspace = true
 prost.workspace = true
 serde = { workspace = true, features = ["derive"] }
+alloy-consensus.workspace = true
+alloy-eips.workspace = true
+alloy-primitives.workspace = true
 tokio.workspace = true
 tokio-stream = "0.1"
 tonic.workspace = true

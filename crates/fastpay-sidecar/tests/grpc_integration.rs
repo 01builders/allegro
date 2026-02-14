@@ -9,6 +9,7 @@ use std::time::Duration;
 use fastpay_crypto::{Ed25519Certificate, Ed25519Signer, MultiCertQC, SimpleAssembler};
 use fastpay_proto::v1;
 use fastpay_proto::v1::fast_pay_sidecar_server::FastPaySidecarServer;
+use fastpay_sidecar_mock::DemoScenario;
 use fastpay_types::{
     Address, AssetId, CertSigningContext, Expiry, NonceKey, QuorumCert, ValidatorId,
     VerificationContext,
@@ -28,14 +29,20 @@ const CHAIN_ID: u64 = 1337;
 const EPOCH: u64 = 1;
 
 fn demo_balances() -> HashMap<Address, HashMap<AssetId, u64>> {
-    let alice = Address::new([0x01; 20]);
-    let bob = Address::new([0x02; 20]);
-    let carol = Address::new([0x03; 20]);
-    let asset = AssetId::new([0xaa; 20]);
+    let scenario = DemoScenario::new(CHAIN_ID, EPOCH);
     HashMap::from([
-        (alice, HashMap::from([(asset, 15)])),
-        (bob, HashMap::from([(asset, 5)])),
-        (carol, HashMap::from([(asset, 5)])),
+        (
+            scenario.accounts.alice,
+            HashMap::from([(scenario.accounts.asset, 15)]),
+        ),
+        (
+            scenario.accounts.bob,
+            HashMap::from([(scenario.accounts.asset, 5)]),
+        ),
+        (
+            scenario.accounts.carol,
+            HashMap::from([(scenario.accounts.asset, 5)]),
+        ),
     ])
 }
 
@@ -80,6 +87,7 @@ async fn start_sidecar(name: &str, validator_id: ValidatorId, seed: [u8; 32]) ->
 
 fn make_grpc_client(
     address: Address,
+    sender_private_key: [u8; 32],
     dave_url: &str,
     edgar_url: &str,
     verify_ctx: VerificationContext,
@@ -95,6 +103,8 @@ fn make_grpc_client(
         NonceKey::new([0x5b; 32]),
         parse_ed25519_proto_cert,
     )
+    .with_sender_private_key(address, sender_private_key)
+    .expect("valid sender key")
 }
 
 async fn build_verify_ctx(dave_url: &str, edgar_url: &str) -> VerificationContext {
@@ -166,13 +176,15 @@ async fn grpc_rejects_wrong_chain_id() {
     let dave_url = format!("http://{}", dave.addr);
 
     let transport = GrpcTransport::new(&dave_url);
-    let alice = Address::new([0x01; 20]);
-    let bob = Address::new([0x02; 20]);
-    let asset = AssetId::new([0xaa; 20]);
+    let scenario = DemoScenario::new(CHAIN_ID, EPOCH);
+    let alice = scenario.accounts.alice;
+    let bob = scenario.accounts.bob;
+    let asset = scenario.accounts.asset;
     let nonce_key = NonceKey::new([0x5b; 32]);
 
     let built = TxBuilder::new(CHAIN_ID + 1)
         .with_payment(alice, bob, 10, asset)
+        .with_sender_private_key(scenario.account_keys.alice)
         .with_nonce_seq(nonce_key, 0)
         .with_expiry(Expiry::MaxBlockHeight(100))
         .with_client_request_id("wrong-chain")
@@ -200,13 +212,15 @@ async fn grpc_retry_is_idempotent_for_same_request() {
     let dave_url = format!("http://{}", dave.addr);
 
     let transport = GrpcTransport::new(&dave_url);
-    let alice = Address::new([0x01; 20]);
-    let bob = Address::new([0x02; 20]);
-    let asset = AssetId::new([0xaa; 20]);
+    let scenario = DemoScenario::new(CHAIN_ID, EPOCH);
+    let alice = scenario.accounts.alice;
+    let bob = scenario.accounts.bob;
+    let asset = scenario.accounts.asset;
     let nonce_key = NonceKey::new([0x5b; 32]);
 
     let built = TxBuilder::new(CHAIN_ID)
         .with_payment(alice, bob, 10, asset)
+        .with_sender_private_key(scenario.account_keys.alice)
         .with_nonce_seq(nonce_key, 0)
         .with_expiry(Expiry::MaxBlockHeight(100))
         .with_client_request_id("idem-req")
@@ -234,6 +248,7 @@ async fn grpc_retry_is_idempotent_for_same_request() {
 
     let follow_up = TxBuilder::new(CHAIN_ID)
         .with_payment(alice, bob, 5, asset)
+        .with_sender_private_key(scenario.account_keys.alice)
         .with_nonce_seq(nonce_key, 1)
         .with_expiry(Expiry::MaxBlockHeight(100))
         .with_client_request_id("idem-req-2")
@@ -264,11 +279,18 @@ async fn grpc_single_payment_alice_to_bob() {
 
     let verify_ctx = build_verify_ctx(&dave_url, &edgar_url).await;
 
-    let alice = Address::new([0x01; 20]);
-    let bob = Address::new([0x02; 20]);
-    let asset = AssetId::new([0xaa; 20]);
+    let scenario = DemoScenario::new(CHAIN_ID, EPOCH);
+    let alice = scenario.accounts.alice;
+    let bob = scenario.accounts.bob;
+    let asset = scenario.accounts.asset;
 
-    let mut client = make_grpc_client(alice, &dave_url, &edgar_url, verify_ctx);
+    let mut client = make_grpc_client(
+        alice,
+        scenario.account_keys.alice,
+        &dave_url,
+        &edgar_url,
+        verify_ctx,
+    );
     let qc = client
         .send_payment(alice, bob, 10, asset, Expiry::MaxBlockHeight(100))
         .await
@@ -286,14 +308,33 @@ async fn grpc_chained_payment_alice_bob_carol() {
 
     let verify_ctx = build_verify_ctx(&dave_url, &edgar_url).await;
 
-    let alice = Address::new([0x01; 20]);
-    let bob = Address::new([0x02; 20]);
-    let carol = Address::new([0x03; 20]);
-    let asset = AssetId::new([0xaa; 20]);
+    let scenario = DemoScenario::new(CHAIN_ID, EPOCH);
+    let alice = scenario.accounts.alice;
+    let bob = scenario.accounts.bob;
+    let carol = scenario.accounts.carol;
+    let asset = scenario.accounts.asset;
 
-    let mut alice_client = make_grpc_client(alice, &dave_url, &edgar_url, verify_ctx.clone());
-    let mut bob_client = make_grpc_client(bob, &dave_url, &edgar_url, verify_ctx.clone());
-    let mut carol_client = make_grpc_client(carol, &dave_url, &edgar_url, verify_ctx);
+    let mut alice_client = make_grpc_client(
+        alice,
+        scenario.account_keys.alice,
+        &dave_url,
+        &edgar_url,
+        verify_ctx.clone(),
+    );
+    let mut bob_client = make_grpc_client(
+        bob,
+        scenario.account_keys.bob,
+        &dave_url,
+        &edgar_url,
+        verify_ctx.clone(),
+    );
+    let mut carol_client = make_grpc_client(
+        carol,
+        scenario.account_keys.carol,
+        &dave_url,
+        &edgar_url,
+        verify_ctx,
+    );
 
     // Alice -> Bob
     let qc1 = alice_client
@@ -334,14 +375,16 @@ async fn grpc_bulletin_board_limit_is_capped_server_side() {
     let dave_url = format!("http://{}", dave.addr);
     let transport = GrpcTransport::new(&dave_url);
 
-    let alice = Address::new([0x01; 20]);
-    let bob = Address::new([0x02; 20]);
-    let asset = AssetId::new([0xaa; 20]);
+    let scenario = DemoScenario::new(CHAIN_ID, EPOCH);
+    let alice = scenario.accounts.alice;
+    let bob = scenario.accounts.bob;
+    let asset = scenario.accounts.asset;
     let nonce_key = NonceKey::new([0x5b; 32]);
 
     for (seq, amount) in [(0_u64, 5_u64), (1_u64, 4_u64)] {
         let built = TxBuilder::new(CHAIN_ID)
             .with_payment(alice, bob, amount, asset)
+            .with_sender_private_key(scenario.account_keys.alice)
             .with_nonce_seq(nonce_key, seq)
             .with_expiry(Expiry::MaxBlockHeight(100))
             .with_client_request_id(format!("bb-cap-{seq}"))
@@ -391,11 +434,18 @@ async fn grpc_gossip_syncs_certs_between_sidecars() {
 
     let verify_ctx = build_verify_ctx(&dave_url, &edgar_url).await;
 
-    let alice = Address::new([0x01; 20]);
-    let bob = Address::new([0x02; 20]);
-    let asset = AssetId::new([0xaa; 20]);
+    let scenario = DemoScenario::new(CHAIN_ID, EPOCH);
+    let alice = scenario.accounts.alice;
+    let bob = scenario.accounts.bob;
+    let asset = scenario.accounts.asset;
 
-    let mut client = make_grpc_client(alice, &dave_url, &edgar_url, verify_ctx);
+    let mut client = make_grpc_client(
+        alice,
+        scenario.account_keys.alice,
+        &dave_url,
+        &edgar_url,
+        verify_ctx,
+    );
     let _qc = client
         .send_payment(alice, bob, 10, asset, Expiry::MaxBlockHeight(100))
         .await

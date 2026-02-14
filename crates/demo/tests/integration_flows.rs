@@ -10,9 +10,9 @@ use fastpay_types::{
     VerificationContext,
 };
 use fastpay_user_client::{
-    encode_payment_tempo_tx, parse_ed25519_proto_cert, CacheLimits, CertManager, CertManagerError,
-    FastPayClient, FastPayClientError, MockTransport, MultiValidatorTransport, SidecarTransport,
-    WalletState,
+    encode_payment_tempo_tx_signed, parse_ed25519_proto_cert, CacheLimits, CertManager,
+    CertManagerError, FastPayClient, FastPayClientError, MockTransport, MultiValidatorTransport,
+    SidecarTransport, WalletState,
 };
 
 async fn build_verify_context(
@@ -52,6 +52,7 @@ async fn build_verify_context(
 
 fn make_client(
     address: Address,
+    sender_private_key: [u8; 32],
     dave_transport: MockTransport,
     edgar_transport: MockTransport,
     verify_ctx: VerificationContext,
@@ -65,10 +66,13 @@ fn make_client(
         NonceKey::new([0x5b; 32]),
         parse_ed25519_proto_cert,
     )
+    .with_sender_private_key(address, sender_private_key)
+    .expect("valid sender key")
 }
 
 fn make_submit_request(
     sender: Address,
+    sender_private_key: [u8; 32],
     recipient: Address,
     amount: u64,
     asset: AssetId,
@@ -83,24 +87,34 @@ fn make_submit_request(
             kind: Some(v1::expiry::Kind::UnixMillis(ms)),
         },
     };
+    let payment = v1::PaymentIntent {
+        sender: Some(v1::Address {
+            data: sender.as_bytes().to_vec(),
+        }),
+        recipient: Some(v1::Address {
+            data: recipient.as_bytes().to_vec(),
+        }),
+        amount,
+        asset: Some(v1::AssetId {
+            data: asset.as_bytes().to_vec(),
+        }),
+    };
+
     v1::SubmitFastPayRequest {
         tx: Some(v1::FastPayTx {
             chain_id: Some(v1::ChainId { value: 1337 }),
             tempo_tx: Some(v1::TempoTxBytes {
-                data: encode_payment_tempo_tx(sender, recipient, amount, asset),
+                data: encode_payment_tempo_tx_signed(
+                    1337,
+                    sender,
+                    recipient,
+                    amount,
+                    asset,
+                    sender_private_key,
+                )
+                .expect("tempo tx should encode"),
             }),
-            intent: Some(v1::PaymentIntent {
-                sender: Some(v1::Address {
-                    data: sender.as_bytes().to_vec(),
-                }),
-                recipient: Some(v1::Address {
-                    data: recipient.as_bytes().to_vec(),
-                }),
-                amount,
-                asset: Some(v1::AssetId {
-                    data: asset.as_bytes().to_vec(),
-                }),
-            }),
+            intent: Some(payment.clone()),
             nonce: Some(v1::Nonce2D {
                 nonce_key_be: [0x5b; 32].to_vec(),
                 nonce_seq: seq,
@@ -108,6 +122,10 @@ fn make_submit_request(
             expiry: Some(expiry),
             parent_qc_hash: Vec::new(),
             client_request_id: format!("req-{seq}"),
+            tempo_tx_format: v1::TempoTxFormat::EvmOpaqueBytesV1 as i32,
+            overlay: Some(v1::OverlayMetadata {
+                payment: Some(payment),
+            }),
         }),
         parent_qcs: Vec::new(),
     }
@@ -122,6 +140,7 @@ async fn integration_single_payment() {
 
     let mut alice = make_client(
         scenario.accounts.alice,
+        scenario.account_keys.alice,
         dave_transport,
         edgar_transport,
         verify_ctx,
@@ -147,12 +166,14 @@ async fn integration_chained_payment() {
     let verify_ctx = build_verify_context(&dave_transport, &edgar_transport, 1).await;
     let mut alice = make_client(
         scenario.accounts.alice,
+        scenario.account_keys.alice,
         dave_transport.clone(),
         edgar_transport.clone(),
         verify_ctx.clone(),
     );
     let mut bob = make_client(
         scenario.accounts.bob,
+        scenario.account_keys.bob,
         dave_transport,
         edgar_transport,
         verify_ctx,
@@ -193,6 +214,7 @@ async fn integration_reject_insufficient_funds() {
     let verify_ctx = build_verify_context(&dave_transport, &edgar_transport, 1).await;
     let mut alice = make_client(
         scenario.accounts.alice,
+        scenario.account_keys.alice,
         dave_transport,
         edgar_transport,
         verify_ctx,
@@ -217,6 +239,7 @@ fn integration_reject_equivocation_attempt() {
     let mut dave = scenario.dave;
     let req1 = make_submit_request(
         scenario.accounts.alice,
+        scenario.account_keys.alice,
         scenario.accounts.bob,
         10,
         scenario.accounts.asset,
@@ -225,6 +248,7 @@ fn integration_reject_equivocation_attempt() {
     );
     let req2 = make_submit_request(
         scenario.accounts.alice,
+        scenario.account_keys.alice,
         scenario.accounts.carol,
         10,
         scenario.accounts.asset,
@@ -253,6 +277,7 @@ async fn integration_reject_expired_transaction() {
     let verify_ctx = build_verify_context(&dave_transport, &edgar_transport, 1).await;
     let mut alice = make_client(
         scenario.accounts.alice,
+        scenario.account_keys.alice,
         dave_transport,
         edgar_transport,
         verify_ctx,
@@ -278,6 +303,7 @@ async fn integration_reject_invalid_parent_qc() {
     let verify_ctx = build_verify_context(&dave_transport, &edgar_transport, 1).await;
     let mut bob = make_client(
         scenario.accounts.bob,
+        scenario.account_keys.bob,
         dave_transport,
         edgar_transport,
         verify_ctx,
@@ -309,6 +335,7 @@ fn integration_reject_intent_mismatch() {
     let mut dave = scenario.dave;
     let mut req = make_submit_request(
         scenario.accounts.alice,
+        scenario.account_keys.alice,
         scenario.accounts.bob,
         10,
         scenario.accounts.asset,
@@ -335,6 +362,7 @@ fn integration_cert_dedupe_by_signer() {
     let mut dave = scenario.dave;
     let req = make_submit_request(
         scenario.accounts.alice,
+        scenario.account_keys.alice,
         scenario.accounts.bob,
         10,
         scenario.accounts.asset,
@@ -422,6 +450,7 @@ fn integration_conflicting_contention_domain() {
     let mut dave = scenario.dave;
     let req1 = make_submit_request(
         scenario.accounts.alice,
+        scenario.account_keys.alice,
         scenario.accounts.bob,
         10,
         scenario.accounts.asset,
@@ -430,6 +459,7 @@ fn integration_conflicting_contention_domain() {
     );
     let req2 = make_submit_request(
         scenario.accounts.alice,
+        scenario.account_keys.alice,
         scenario.accounts.carol,
         10,
         scenario.accounts.asset,
@@ -453,6 +483,7 @@ fn integration_expiry_boundary_race() {
     dave.set_chain_head(5, 0);
     let req = make_submit_request(
         scenario.accounts.alice,
+        scenario.account_keys.alice,
         scenario.accounts.bob,
         10,
         scenario.accounts.asset,
@@ -474,6 +505,7 @@ fn integration_bulletin_board_partial_sync_consistency() {
     let mut dave = scenario.dave;
     let req1 = make_submit_request(
         scenario.accounts.alice,
+        scenario.account_keys.alice,
         scenario.accounts.bob,
         5,
         scenario.accounts.asset,
@@ -482,6 +514,7 @@ fn integration_bulletin_board_partial_sync_consistency() {
     );
     let req2 = make_submit_request(
         scenario.accounts.alice,
+        scenario.account_keys.alice,
         scenario.accounts.bob,
         4,
         scenario.accounts.asset,
@@ -525,18 +558,21 @@ async fn integration_full_demo_end_to_end() {
     let verify_ctx = build_verify_context(&dave_transport, &edgar_transport, 1).await;
     let mut alice = make_client(
         scenario.accounts.alice,
+        scenario.account_keys.alice,
         dave_transport.clone(),
         edgar_transport.clone(),
         verify_ctx.clone(),
     );
     let mut bob = make_client(
         scenario.accounts.bob,
+        scenario.account_keys.bob,
         dave_transport.clone(),
         edgar_transport.clone(),
         verify_ctx.clone(),
     );
     let mut carol = make_client(
         scenario.accounts.carol,
+        scenario.account_keys.carol,
         dave_transport,
         edgar_transport,
         verify_ctx,

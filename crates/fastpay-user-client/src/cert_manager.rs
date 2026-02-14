@@ -141,6 +141,7 @@ where
 mod tests {
     use std::collections::HashMap;
 
+    use alloy_signer_local::PrivateKeySigner;
     use fastpay_crypto::{Ed25519Signer, SimpleAssembler};
     use fastpay_types::{
         CertSigningContext, CryptoError, Expiry, NonceKey, QuorumCert, Signer, ValidatorId,
@@ -160,11 +161,28 @@ mod tests {
         fastpay_types::EffectsHash,
         VerificationContext,
     ) {
-        let sender = Address::new([0x01; 20]);
-        let recipient = Address::new([0x02; 20]);
-        let asset = AssetId::new([0xaa; 20]);
+        let sender_private_key = [0x11; 32];
+        let sender = Address::from_slice(
+            PrivateKeySigner::from_slice(&sender_private_key)
+                .expect("valid key")
+                .address()
+                .as_slice(),
+        )
+        .expect("address");
+        let recipient = Address::from_slice(
+            PrivateKeySigner::from_slice(&[0x22; 32])
+                .expect("valid key")
+                .address()
+                .as_slice(),
+        )
+        .expect("address");
+        let asset = AssetId::new([
+            0x20, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaa, 0xaa,
+            0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
+        ]);
         let built = TxBuilder::new(1337)
             .with_payment(sender, recipient, 10, asset)
+            .with_sender_private_key(sender_private_key)
             .with_nonce(NonceKey::new([0x5b; 32]))
             .with_expiry(Expiry::MaxBlockHeight(100))
             .build()
