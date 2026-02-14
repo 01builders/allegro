@@ -15,23 +15,25 @@ mod tests {
 
     #[test]
     fn fastpay_tx_round_trip() {
+        let payment = v1::PaymentIntent {
+            sender: Some(v1::Address {
+                data: [1u8; 20].to_vec(),
+            }),
+            recipient: Some(v1::Address {
+                data: [2u8; 20].to_vec(),
+            }),
+            amount: 10,
+            asset: Some(v1::AssetId {
+                data: [3u8; 20].to_vec(),
+            }),
+        };
+
         let tx = v1::FastPayTx {
             chain_id: Some(v1::ChainId { value: 1337 }),
             tempo_tx: Some(v1::TempoTxBytes {
                 data: b"tempo-opaque-bytes".to_vec(),
             }),
-            intent: Some(v1::PaymentIntent {
-                sender: Some(v1::Address {
-                    data: [1u8; 20].to_vec(),
-                }),
-                recipient: Some(v1::Address {
-                    data: [2u8; 20].to_vec(),
-                }),
-                amount: 10,
-                asset: Some(v1::AssetId {
-                    data: [3u8; 20].to_vec(),
-                }),
-            }),
+            intent: Some(payment.clone()),
             nonce: Some(v1::Nonce2D {
                 nonce_key_be: [4u8; 32].to_vec(),
                 nonce_seq: 7,
@@ -41,6 +43,10 @@ mod tests {
             }),
             parent_qc_hash: [5u8; 32].to_vec(),
             client_request_id: "demo-request-id".to_string(),
+            tempo_tx_format: v1::TempoTxFormat::EvmOpaqueBytesV1 as i32,
+            overlay: Some(v1::OverlayMetadata {
+                payment: Some(payment),
+            }),
         };
 
         let encoded = tx.encode_to_vec();

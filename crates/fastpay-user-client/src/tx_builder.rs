@@ -41,6 +41,8 @@ pub struct TxBuilder {
     expiry: Option<Expiry>,
     parent_qc_hash: Option<QcHash>,
     client_request_id: Option<String>,
+    tempo_tx_format: Option<i32>,
+    tempo_tx_bytes: Option<Vec<u8>>,
     next_nonce_by_key: HashMap<NonceKey, u64>,
 }
 
@@ -99,6 +101,12 @@ impl TxBuilder {
         self
     }
 
+    pub fn with_tempo_tx(mut self, format: v1::TempoTxFormat, tempo_tx_bytes: Vec<u8>) -> Self {
+        self.tempo_tx_format = Some(format as i32);
+        self.tempo_tx_bytes = Some(tempo_tx_bytes);
+        self
+    }
+
     pub fn build(self) -> Result<BuiltTx, TxBuilderError> {
         let chain_id = self
             .chain_id
@@ -126,7 +134,12 @@ impl TxBuilder {
             return Err(TxBuilderError::InvalidPayment("amount must be > 0"));
         }
 
-        let tempo_tx = encode_payment_tempo_tx(sender, recipient, amount, asset);
+        let tempo_tx = self
+            .tempo_tx_bytes
+            .unwrap_or_else(|| encode_payment_tempo_tx(sender, recipient, amount, asset));
+        let tempo_tx_format = self
+            .tempo_tx_format
+            .unwrap_or(v1::TempoTxFormat::EvmOpaqueBytesV1 as i32);
         let tx_hash_input = TxHashInput {
             chain_id,
             tempo_tx: tempo_tx.clone(),
@@ -146,21 +159,23 @@ impl TxBuilder {
         let tx_hash = compute_tx_hash(&tx_hash_input);
         let effects_hash = compute_effects_hash(&effects_hash_input);
 
+        let payment_intent = v1::PaymentIntent {
+            sender: Some(v1::Address {
+                data: sender.as_bytes().to_vec(),
+            }),
+            recipient: Some(v1::Address {
+                data: recipient.as_bytes().to_vec(),
+            }),
+            amount,
+            asset: Some(v1::AssetId {
+                data: asset.as_bytes().to_vec(),
+            }),
+        };
+
         let tx = v1::FastPayTx {
             chain_id: Some(v1::ChainId { value: chain_id }),
             tempo_tx: Some(v1::TempoTxBytes { data: tempo_tx }),
-            intent: Some(v1::PaymentIntent {
-                sender: Some(v1::Address {
-                    data: sender.as_bytes().to_vec(),
-                }),
-                recipient: Some(v1::Address {
-                    data: recipient.as_bytes().to_vec(),
-                }),
-                amount,
-                asset: Some(v1::AssetId {
-                    data: asset.as_bytes().to_vec(),
-                }),
-            }),
+            intent: Some(payment_intent.clone()),
             nonce: Some(v1::Nonce2D {
                 nonce_key_be: nonce_key.as_bytes().to_vec(),
                 nonce_seq,
@@ -173,6 +188,10 @@ impl TxBuilder {
             client_request_id: self
                 .client_request_id
                 .unwrap_or_else(|| format!("req-{chain_id}-{nonce_seq}")),
+            tempo_tx_format,
+            overlay: Some(v1::OverlayMetadata {
+                payment: Some(payment_intent),
+            }),
         };
 
         Ok(BuiltTx {
@@ -184,16 +203,96 @@ impl TxBuilder {
 }
 
 pub fn encode_payment_tempo_tx(
-    sender: Address,
+    _sender: Address,
     recipient: Address,
     amount: u64,
     asset: AssetId,
 ) -> Vec<u8> {
-    let mut out = Vec::with_capacity(68);
-    out.extend_from_slice(sender.as_bytes());
-    out.extend_from_slice(recipient.as_bytes());
-    out.extend_from_slice(&amount.to_be_bytes());
-    out.extend_from_slice(asset.as_bytes());
+    // Minimal signed legacy-Ethereum envelope carrying ERC-20 transfer calldata.
+    let calldata = {
+        let mut data = Vec::with_capacity(68);
+        data.extend_from_slice(&[0xa9, 0x05, 0x9c, 0xbb]); // transfer(address,uint256)
+        data.extend_from_slice(&[0u8; 12]);
+        data.extend_from_slice(recipient.as_bytes());
+        data.extend_from_slice(&[0u8; 24]);
+        data.extend_from_slice(&amount.to_be_bytes());
+        data
+    };
+
+    let fields = [
+        rlp_encode_u64(0), // nonce
+        rlp_encode_u64(1), // gas price
+        rlp_encode_u64(80_000),
+        rlp_encode_bytes(asset.as_bytes()), // to = token contract
+        rlp_encode_u64(0),                  // value
+        rlp_encode_bytes(&calldata),
+        rlp_encode_u64(27),
+        rlp_encode_u64(1),
+        rlp_encode_u64(1),
+    ];
+
+    rlp_encode_list(&fields)
+}
+
+fn rlp_encode_u64(value: u64) -> Vec<u8> {
+    if value == 0 {
+        return vec![0x80];
+    }
+    let be = value.to_be_bytes();
+    let first_non_zero = be.iter().position(|b| *b != 0).unwrap_or(be.len() - 1);
+    rlp_encode_bytes(&be[first_non_zero..])
+}
+
+fn rlp_encode_bytes(bytes: &[u8]) -> Vec<u8> {
+    if bytes.len() == 1 && bytes[0] < 0x80 {
+        return vec![bytes[0]];
+    }
+    if bytes.len() < 56 {
+        let mut out = Vec::with_capacity(1 + bytes.len());
+        out.push(0x80 + bytes.len() as u8);
+        out.extend_from_slice(bytes);
+        return out;
+    }
+
+    let len_be = (bytes.len() as u64).to_be_bytes();
+    let first_non_zero = len_be
+        .iter()
+        .position(|b| *b != 0)
+        .unwrap_or(len_be.len() - 1);
+    let len_slice = &len_be[first_non_zero..];
+
+    let mut out = Vec::with_capacity(1 + len_slice.len() + bytes.len());
+    out.push(0xb7 + len_slice.len() as u8);
+    out.extend_from_slice(len_slice);
+    out.extend_from_slice(bytes);
+    out
+}
+
+fn rlp_encode_list(items: &[Vec<u8>]) -> Vec<u8> {
+    let payload_len: usize = items.iter().map(std::vec::Vec::len).sum();
+    let mut payload = Vec::with_capacity(payload_len);
+    for item in items {
+        payload.extend_from_slice(item);
+    }
+
+    if payload.len() < 56 {
+        let mut out = Vec::with_capacity(1 + payload.len());
+        out.push(0xc0 + payload.len() as u8);
+        out.extend_from_slice(&payload);
+        return out;
+    }
+
+    let len_be = (payload.len() as u64).to_be_bytes();
+    let first_non_zero = len_be
+        .iter()
+        .position(|b| *b != 0)
+        .unwrap_or(len_be.len() - 1);
+    let len_slice = &len_be[first_non_zero..];
+
+    let mut out = Vec::with_capacity(1 + len_slice.len() + payload.len());
+    out.push(0xf7 + len_slice.len() as u8);
+    out.extend_from_slice(len_slice);
+    out.extend_from_slice(&payload);
     out
 }
 
@@ -213,6 +312,7 @@ mod tests {
     };
 
     use super::{TxBuilder, TxBuilderError};
+    use fastpay_proto::v1;
     use fastpay_types::{Address, AssetId, Expiry};
 
     #[test]
@@ -234,10 +334,13 @@ mod tests {
             0,
             "first nonce for key should be 0"
         );
+        assert!(
+            !built.tx.tempo_tx.expect("tempo_tx").data.is_empty(),
+            "evm payload should be present"
+        );
         assert_eq!(
-            built.tx.tempo_tx.expect("tempo_tx").data.len(),
-            68,
-            "canonical payment encoding"
+            built.tx.tempo_tx_format,
+            v1::TempoTxFormat::EvmOpaqueBytesV1 as i32
         );
     }
 

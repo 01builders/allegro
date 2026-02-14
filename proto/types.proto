@@ -61,6 +61,13 @@ message TempoTxBytes {
   bytes data = 1; // RLP or TempoTransaction encoding (opaque)
 }
 
+// Explicit format discriminator for `tempo_tx` payload bytes.
+// This avoids heuristic parsing and enables phased migration.
+enum TempoTxFormat {
+  TEMPO_TX_FORMAT_UNSPECIFIED = 0;
+  EVM_OPAQUE_BYTES_V1 = 1;
+}
+
 // Optional decoded "payment intent" fields (useful for demo/UI/indexing).
 // NOTE: Validators should always verify against TempoTxBytes, not trust this alone.
 message PaymentIntent {
@@ -68,6 +75,12 @@ message PaymentIntent {
   Address recipient = 2;
   uint64 amount = 3;    // demo uses whole dollars; production would use uint256 token units
   AssetId asset = 4;    // TIP-20 contract address
+}
+
+// Overlay metadata used by sidecar logic for payment-lane tracking.
+// Sidecars must validate this against tempo_tx payload before signing.
+message OverlayMetadata {
+  PaymentIntent payment = 1;
 }
 
 // -----------------------------
@@ -95,6 +108,12 @@ message FastPayTx {
 
   // Client-provided unique id for request correlation (optional).
   string client_request_id = 7;
+
+  // Explicit format for tempo_tx payload bytes.
+  TempoTxFormat tempo_tx_format = 8;
+
+  // Sidecar-tracked overlay metadata validated against tempo_tx.
+  OverlayMetadata overlay = 9;
 }
 
 // -----------------------------

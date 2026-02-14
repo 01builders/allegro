@@ -83,24 +83,26 @@ fn make_submit_request(
             kind: Some(v1::expiry::Kind::UnixMillis(ms)),
         },
     };
+    let payment = v1::PaymentIntent {
+        sender: Some(v1::Address {
+            data: sender.as_bytes().to_vec(),
+        }),
+        recipient: Some(v1::Address {
+            data: recipient.as_bytes().to_vec(),
+        }),
+        amount,
+        asset: Some(v1::AssetId {
+            data: asset.as_bytes().to_vec(),
+        }),
+    };
+
     v1::SubmitFastPayRequest {
         tx: Some(v1::FastPayTx {
             chain_id: Some(v1::ChainId { value: 1337 }),
             tempo_tx: Some(v1::TempoTxBytes {
                 data: encode_payment_tempo_tx(sender, recipient, amount, asset),
             }),
-            intent: Some(v1::PaymentIntent {
-                sender: Some(v1::Address {
-                    data: sender.as_bytes().to_vec(),
-                }),
-                recipient: Some(v1::Address {
-                    data: recipient.as_bytes().to_vec(),
-                }),
-                amount,
-                asset: Some(v1::AssetId {
-                    data: asset.as_bytes().to_vec(),
-                }),
-            }),
+            intent: Some(payment.clone()),
             nonce: Some(v1::Nonce2D {
                 nonce_key_be: [0x5b; 32].to_vec(),
                 nonce_seq: seq,
@@ -108,6 +110,10 @@ fn make_submit_request(
             expiry: Some(expiry),
             parent_qc_hash: Vec::new(),
             client_request_id: format!("req-{seq}"),
+            tempo_tx_format: v1::TempoTxFormat::EvmOpaqueBytesV1 as i32,
+            overlay: Some(v1::OverlayMetadata {
+                payment: Some(payment),
+            }),
         }),
         parent_qcs: Vec::new(),
     }

@@ -5,6 +5,9 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::RwLock;
 
+use alloy_consensus::TxEnvelope;
+use alloy_eips::eip2718::Decodable2718;
+use alloy_primitives::TxKind;
 use fastpay_crypto::{
     compute_effects_hash, compute_qc_hash, compute_tx_hash, Ed25519Signer, EffectsHashInput,
     TxHashInput,
@@ -26,6 +29,15 @@ pub struct DecodedPayment {
     pub amount: u64,
     pub asset: AssetId,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecodedTempoPayload {
+    pub recipient: Address,
+    pub amount: u64,
+    pub asset: AssetId,
+}
+
+const MAX_TEMPO_TX_BYTES: usize = 128 * 1024;
 
 // ---------------------------------------------------------------------------
 // Inner (mutable state behind RwLock)
@@ -392,8 +404,43 @@ fn prepare_submission(
         return Err(reject(v1::RejectCode::WrongChain, "wrong chain_id"));
     }
 
-    let decoded = decode_payment_from_fastpay_tx(&tx)?;
+    let tempo_tx = tx
+        .tempo_tx
+        .as_ref()
+        .ok_or_else(|| reject(v1::RejectCode::InvalidFormat, "missing tempo_tx"))?;
+    if tempo_tx.data.is_empty() {
+        return Err(reject(v1::RejectCode::InvalidFormat, "empty tempo_tx"));
+    }
+    if tempo_tx.data.len() > MAX_TEMPO_TX_BYTES {
+        return Err(reject(
+            v1::RejectCode::InvalidFormat,
+            "tempo_tx exceeds maximum size",
+        ));
+    }
+    let tx_format = parse_tempo_tx_format(&tx)?;
+    let decoded = overlay_payment_from_fastpay_tx(&tx)?;
+    let payload = match tx_format {
+        v1::TempoTxFormat::EvmOpaqueBytesV1 => decode_payment_from_tempo_tx(&tempo_tx.data)?,
+        v1::TempoTxFormat::Unspecified => {
+            return Err(reject(
+                v1::RejectCode::InvalidFormat,
+                "tempo_tx_format unspecified",
+            ));
+        }
+    };
+
+    if payload.recipient != decoded.recipient
+        || payload.amount != decoded.amount
+        || payload.asset != decoded.asset
+    {
+        return Err(reject(
+            v1::RejectCode::InvalidFormat,
+            "overlay payment does not match tempo_tx",
+        ));
+    }
+
     validate_intent(&tx, &decoded)?;
+
     let expiry = parse_expiry(tx.expiry.as_ref())?;
 
     let nonce = tx
@@ -471,34 +518,135 @@ fn cache_submit_response(
     }
 }
 
-fn decode_payment_from_fastpay_tx(tx: &v1::FastPayTx) -> Result<DecodedPayment, v1::RejectReason> {
-    let tempo_tx = tx
-        .tempo_tx
-        .as_ref()
-        .ok_or_else(|| reject(v1::RejectCode::InvalidFormat, "missing tempo_tx"))?;
-    decode_payment_from_tempo_tx(&tempo_tx.data)
-}
-
-pub fn decode_payment_from_tempo_tx(bytes: &[u8]) -> Result<DecodedPayment, v1::RejectReason> {
-    if bytes.len() != 68 {
+fn parse_tempo_tx_format(tx: &v1::FastPayTx) -> Result<v1::TempoTxFormat, v1::RejectReason> {
+    if tx.tempo_tx_format == v1::TempoTxFormat::Unspecified as i32 {
         return Err(reject(
             v1::RejectCode::InvalidFormat,
-            "tempo_tx must be 68 bytes",
+            "tempo_tx_format must be specified",
         ));
     }
-    let sender = Address::from_slice(&bytes[0..20])
-        .map_err(|_| reject(v1::RejectCode::InvalidFormat, "invalid sender"))?;
-    let recipient = Address::from_slice(&bytes[20..40])
+
+    v1::TempoTxFormat::try_from(tx.tempo_tx_format).map_err(|_| {
+        reject(
+            v1::RejectCode::InvalidFormat,
+            "unknown tempo_tx_format value",
+        )
+    })
+}
+
+fn overlay_payment_from_fastpay_tx(tx: &v1::FastPayTx) -> Result<DecodedPayment, v1::RejectReason> {
+    if let Some(overlay) = tx.overlay.as_ref() {
+        if let Some(payment) = overlay.payment.as_ref() {
+            return payment_intent_to_decoded(payment, "overlay.payment");
+        }
+    }
+
+    if let Some(intent) = tx.intent.as_ref() {
+        return payment_intent_to_decoded(intent, "intent");
+    }
+
+    Err(reject(
+        v1::RejectCode::InvalidFormat,
+        "missing overlay payment metadata",
+    ))
+}
+
+fn payment_intent_to_decoded(
+    intent: &v1::PaymentIntent,
+    field: &'static str,
+) -> Result<DecodedPayment, v1::RejectReason> {
+    let sender = to_address(intent.sender.as_ref())
+        .map_err(|_| reject(v1::RejectCode::InvalidFormat, format!("{field}.sender")))?;
+    let recipient = to_address(intent.recipient.as_ref())
+        .map_err(|_| reject(v1::RejectCode::InvalidFormat, format!("{field}.recipient")))?;
+    let asset = to_asset(intent.asset.as_ref())
+        .map_err(|_| reject(v1::RejectCode::InvalidFormat, format!("{field}.asset")))?;
+    Ok(DecodedPayment {
+        sender,
+        recipient,
+        amount: intent.amount,
+        asset,
+    })
+}
+
+pub fn decode_payment_from_tempo_tx(bytes: &[u8]) -> Result<DecodedTempoPayload, v1::RejectReason> {
+    let envelope = TxEnvelope::decode_2718_exact(bytes).map_err(|_| {
+        reject(
+            v1::RejectCode::InvalidFormat,
+            "invalid ethereum tx encoding",
+        )
+    })?;
+
+    let (to_kind, value, input) = match envelope {
+        TxEnvelope::Legacy(signed) => {
+            let tx = signed.tx();
+            (tx.to, tx.value, tx.input.to_vec())
+        }
+        TxEnvelope::Eip2930(signed) => {
+            let tx = signed.tx();
+            (tx.to, tx.value, tx.input.to_vec())
+        }
+        TxEnvelope::Eip1559(signed) => {
+            let tx = signed.tx();
+            (tx.to, tx.value, tx.input.to_vec())
+        }
+        _ => {
+            return Err(reject(
+                v1::RejectCode::NotPaymentTx,
+                "unsupported ethereum tx type",
+            ));
+        }
+    };
+
+    if !value.is_zero() {
+        return Err(reject(
+            v1::RejectCode::NotPaymentTx,
+            "native value transfers are not supported",
+        ));
+    }
+
+    let token_addr = match to_kind {
+        TxKind::Call(addr) => addr,
+        TxKind::Create => {
+            return Err(reject(
+                v1::RejectCode::NotPaymentTx,
+                "contract creation is not a payment tx",
+            ));
+        }
+    };
+
+    if input.len() != 68 || input[0..4] != [0xa9, 0x05, 0x9c, 0xbb] {
+        return Err(reject(
+            v1::RejectCode::NotPaymentTx,
+            "unsupported call data",
+        ));
+    }
+
+    if input[4..16].iter().any(|b| *b != 0) {
+        return Err(reject(
+            v1::RejectCode::InvalidFormat,
+            "invalid recipient encoding",
+        ));
+    }
+    if input[36..60].iter().any(|b| *b != 0) {
+        return Err(reject(
+            v1::RejectCode::InvalidFormat,
+            "amount does not fit u64",
+        ));
+    }
+
+    let recipient = Address::from_slice(&input[16..36])
         .map_err(|_| reject(v1::RejectCode::InvalidFormat, "invalid recipient"))?;
     let amount = u64::from_be_bytes(
-        bytes[40..48]
+        input[60..68]
             .try_into()
             .map_err(|_| reject(v1::RejectCode::InvalidFormat, "invalid amount"))?,
     );
-    let asset = AssetId::from_slice(&bytes[48..68])
-        .map_err(|_| reject(v1::RejectCode::InvalidFormat, "invalid asset"))?;
-    Ok(DecodedPayment {
-        sender,
+
+    let asset = AssetId::from_slice(token_addr.as_slice())
+        .map_err(|_| reject(v1::RejectCode::InvalidFormat, "invalid token address"))?;
+
+    Ok(DecodedTempoPayload {
         recipient,
         amount,
         asset,

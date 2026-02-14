@@ -2,6 +2,9 @@
 
 use std::collections::{HashMap, HashSet};
 
+use alloy_consensus::TxEnvelope;
+use alloy_eips::eip2718::Decodable2718;
+use alloy_primitives::TxKind;
 use fastpay_crypto::{
     compute_effects_hash, compute_qc_hash, compute_tx_hash, Ed25519Signer, EffectsHashInput,
     TxHashInput,
@@ -19,6 +22,15 @@ pub struct DecodedPayment {
     pub amount: u64,
     pub asset: AssetId,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecodedTempoPayload {
+    pub recipient: Address,
+    pub amount: u64,
+    pub asset: AssetId,
+}
+
+const MAX_TEMPO_TX_BYTES: usize = 128 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct MockSidecar {
@@ -130,7 +142,43 @@ impl MockSidecar {
             .tx
             .clone()
             .ok_or_else(|| reject(v1::RejectCode::InvalidFormat, "missing tx"))?;
-        let decoded = self.decode_payment_from_fastpay_tx(&tx)?;
+        let tempo_tx = tx
+            .tempo_tx
+            .as_ref()
+            .ok_or_else(|| reject(v1::RejectCode::InvalidFormat, "missing tempo_tx"))?;
+        if tempo_tx.data.is_empty() {
+            return Err(reject(v1::RejectCode::InvalidFormat, "empty tempo_tx"));
+        }
+        if tempo_tx.data.len() > MAX_TEMPO_TX_BYTES {
+            return Err(reject(
+                v1::RejectCode::InvalidFormat,
+                "tempo_tx exceeds maximum size",
+            ));
+        }
+        let tx_format = parse_tempo_tx_format(&tx)?;
+        let decoded = overlay_payment_from_fastpay_tx(&tx)?;
+        let payload = match tx_format {
+            v1::TempoTxFormat::EvmOpaqueBytesV1 => {
+                Self::decode_payment_from_tempo_tx(&tempo_tx.data)?
+            }
+            v1::TempoTxFormat::Unspecified => {
+                return Err(reject(
+                    v1::RejectCode::InvalidFormat,
+                    "tempo_tx_format unspecified",
+                ));
+            }
+        };
+
+        if payload.recipient != decoded.recipient
+            || payload.amount != decoded.amount
+            || payload.asset != decoded.asset
+        {
+            return Err(reject(
+                v1::RejectCode::InvalidFormat,
+                "overlay payment does not match tempo_tx",
+            ));
+        }
+
         self.validate_intent(&tx, &decoded)?;
         let expiry = parse_expiry(tx.expiry.as_ref())?;
         if self.is_expired(expiry) {
@@ -197,37 +245,86 @@ impl MockSidecar {
         Ok(cert_proto)
     }
 
-    fn decode_payment_from_fastpay_tx(
-        &self,
-        tx: &v1::FastPayTx,
-    ) -> Result<DecodedPayment, v1::RejectReason> {
-        let tempo_tx = tx
-            .tempo_tx
-            .as_ref()
-            .ok_or_else(|| reject(v1::RejectCode::InvalidFormat, "missing tempo_tx"))?;
-        Self::decode_payment_from_tempo_tx(&tempo_tx.data)
-    }
-
-    pub fn decode_payment_from_tempo_tx(bytes: &[u8]) -> Result<DecodedPayment, v1::RejectReason> {
-        if bytes.len() != 68 {
-            return Err(reject(
+    pub fn decode_payment_from_tempo_tx(
+        bytes: &[u8],
+    ) -> Result<DecodedTempoPayload, v1::RejectReason> {
+        let envelope = TxEnvelope::decode_2718_exact(bytes).map_err(|_| {
+            reject(
                 v1::RejectCode::InvalidFormat,
-                "tempo_tx must be 68 bytes",
+                "invalid ethereum tx encoding",
+            )
+        })?;
+
+        let (to_kind, value, input) = match envelope {
+            TxEnvelope::Legacy(signed) => {
+                let tx = signed.tx();
+                (tx.to, tx.value, tx.input.to_vec())
+            }
+            TxEnvelope::Eip2930(signed) => {
+                let tx = signed.tx();
+                (tx.to, tx.value, tx.input.to_vec())
+            }
+            TxEnvelope::Eip1559(signed) => {
+                let tx = signed.tx();
+                (tx.to, tx.value, tx.input.to_vec())
+            }
+            _ => {
+                return Err(reject(
+                    v1::RejectCode::NotPaymentTx,
+                    "unsupported ethereum tx type",
+                ));
+            }
+        };
+
+        if !value.is_zero() {
+            return Err(reject(
+                v1::RejectCode::NotPaymentTx,
+                "native value transfers are not supported",
             ));
         }
-        let sender = Address::from_slice(&bytes[0..20])
-            .map_err(|_| reject(v1::RejectCode::InvalidFormat, "invalid sender"))?;
-        let recipient = Address::from_slice(&bytes[20..40])
+
+        let token_addr = match to_kind {
+            TxKind::Call(addr) => addr,
+            TxKind::Create => {
+                return Err(reject(
+                    v1::RejectCode::NotPaymentTx,
+                    "contract creation is not a payment tx",
+                ));
+            }
+        };
+
+        if input.len() != 68 || input[0..4] != [0xa9, 0x05, 0x9c, 0xbb] {
+            return Err(reject(
+                v1::RejectCode::NotPaymentTx,
+                "unsupported call data",
+            ));
+        }
+
+        if input[4..16].iter().any(|b| *b != 0) {
+            return Err(reject(
+                v1::RejectCode::InvalidFormat,
+                "invalid recipient encoding",
+            ));
+        }
+        if input[36..60].iter().any(|b| *b != 0) {
+            return Err(reject(
+                v1::RejectCode::InvalidFormat,
+                "amount does not fit u64",
+            ));
+        }
+
+        let recipient = Address::from_slice(&input[16..36])
             .map_err(|_| reject(v1::RejectCode::InvalidFormat, "invalid recipient"))?;
         let amount = u64::from_be_bytes(
-            bytes[40..48]
+            input[60..68]
                 .try_into()
                 .map_err(|_| reject(v1::RejectCode::InvalidFormat, "invalid amount"))?,
         );
-        let asset = AssetId::from_slice(&bytes[48..68])
-            .map_err(|_| reject(v1::RejectCode::InvalidFormat, "invalid asset"))?;
-        Ok(DecodedPayment {
-            sender,
+
+        let asset = AssetId::from_slice(token_addr.as_slice())
+            .map_err(|_| reject(v1::RejectCode::InvalidFormat, "invalid token address"))?;
+
+        Ok(DecodedTempoPayload {
             recipient,
             amount,
             asset,
@@ -418,12 +515,6 @@ impl MockSidecar {
             .entry(decoded.asset)
             .and_modify(|v| *v -= decoded.amount as i64)
             .or_insert(-(decoded.amount as i64));
-        self.overlay
-            .entry(decoded.recipient)
-            .or_default()
-            .entry(decoded.asset)
-            .and_modify(|v| *v += decoded.amount as i64)
-            .or_insert(decoded.amount as i64);
     }
 
     fn store_cert_dedup_by_signer(&mut self, tx_hash: TxHash, cert: v1::ValidatorCertificate) {
@@ -441,6 +532,57 @@ impl MockSidecar {
         }
         entry.push(cert);
     }
+}
+
+fn parse_tempo_tx_format(tx: &v1::FastPayTx) -> Result<v1::TempoTxFormat, v1::RejectReason> {
+    if tx.tempo_tx_format == v1::TempoTxFormat::Unspecified as i32 {
+        return Err(reject(
+            v1::RejectCode::InvalidFormat,
+            "tempo_tx_format must be specified",
+        ));
+    }
+
+    v1::TempoTxFormat::try_from(tx.tempo_tx_format).map_err(|_| {
+        reject(
+            v1::RejectCode::InvalidFormat,
+            "unknown tempo_tx_format value",
+        )
+    })
+}
+
+fn overlay_payment_from_fastpay_tx(tx: &v1::FastPayTx) -> Result<DecodedPayment, v1::RejectReason> {
+    if let Some(overlay) = tx.overlay.as_ref() {
+        if let Some(payment) = overlay.payment.as_ref() {
+            return payment_intent_to_decoded(payment, "overlay.payment");
+        }
+    }
+
+    if let Some(intent) = tx.intent.as_ref() {
+        return payment_intent_to_decoded(intent, "intent");
+    }
+
+    Err(reject(
+        v1::RejectCode::InvalidFormat,
+        "missing overlay payment metadata",
+    ))
+}
+
+fn payment_intent_to_decoded(
+    intent: &v1::PaymentIntent,
+    field: &'static str,
+) -> Result<DecodedPayment, v1::RejectReason> {
+    let sender = to_address(intent.sender.as_ref())
+        .map_err(|_| reject(v1::RejectCode::InvalidFormat, format!("{field}.sender")))?;
+    let recipient = to_address(intent.recipient.as_ref())
+        .map_err(|_| reject(v1::RejectCode::InvalidFormat, format!("{field}.recipient")))?;
+    let asset = to_asset(intent.asset.as_ref())
+        .map_err(|_| reject(v1::RejectCode::InvalidFormat, format!("{field}.asset")))?;
+    Ok(DecodedPayment {
+        sender,
+        recipient,
+        amount: intent.amount,
+        asset,
+    })
 }
 
 fn to_proto_cert(
@@ -580,11 +722,112 @@ mod tests {
     use crate::mock_sidecar::{DecodedPayment, MockSidecar};
 
     fn encode_payment(payment: &DecodedPayment) -> Vec<u8> {
-        let mut out = Vec::with_capacity(68);
-        out.extend_from_slice(payment.sender.as_bytes());
-        out.extend_from_slice(payment.recipient.as_bytes());
-        out.extend_from_slice(&payment.amount.to_be_bytes());
-        out.extend_from_slice(payment.asset.as_bytes());
+        let calldata = {
+            let mut data = Vec::with_capacity(68);
+            data.extend_from_slice(&[0xa9, 0x05, 0x9c, 0xbb]);
+            data.extend_from_slice(&[0u8; 12]);
+            data.extend_from_slice(payment.recipient.as_bytes());
+            data.extend_from_slice(&[0u8; 24]);
+            data.extend_from_slice(&payment.amount.to_be_bytes());
+            data
+        };
+        let fields = [
+            rlp_encode_u64(0),
+            rlp_encode_u64(1),
+            rlp_encode_u64(80_000),
+            rlp_encode_bytes(payment.asset.as_bytes()),
+            rlp_encode_u64(0),
+            rlp_encode_bytes(&calldata),
+            rlp_encode_u64(27),
+            rlp_encode_u64(1),
+            rlp_encode_u64(1),
+        ];
+        rlp_encode_list(&fields)
+    }
+
+    fn encode_typed_payment(payment: &DecodedPayment) -> Vec<u8> {
+        let calldata = {
+            let mut data = Vec::with_capacity(68);
+            data.extend_from_slice(&[0xa9, 0x05, 0x9c, 0xbb]);
+            data.extend_from_slice(&[0u8; 12]);
+            data.extend_from_slice(payment.recipient.as_bytes());
+            data.extend_from_slice(&[0u8; 24]);
+            data.extend_from_slice(&payment.amount.to_be_bytes());
+            data
+        };
+        let fields = [
+            rlp_encode_u64(1337),
+            rlp_encode_u64(0),
+            rlp_encode_u64(1),
+            rlp_encode_u64(1),
+            rlp_encode_u64(80_000),
+            rlp_encode_bytes(payment.asset.as_bytes()),
+            rlp_encode_u64(0),
+            rlp_encode_bytes(&calldata),
+            rlp_encode_list(&[]),
+            rlp_encode_u64(1),
+            rlp_encode_u64(1),
+            rlp_encode_u64(1),
+        ];
+        let mut out = vec![0x02];
+        out.extend_from_slice(&rlp_encode_list(&fields));
+        out
+    }
+
+    fn rlp_encode_u64(value: u64) -> Vec<u8> {
+        if value == 0 {
+            return vec![0x80];
+        }
+        let be = value.to_be_bytes();
+        let first_non_zero = be.iter().position(|b| *b != 0).unwrap_or(be.len() - 1);
+        rlp_encode_bytes(&be[first_non_zero..])
+    }
+
+    fn rlp_encode_bytes(bytes: &[u8]) -> Vec<u8> {
+        if bytes.len() == 1 && bytes[0] < 0x80 {
+            return vec![bytes[0]];
+        }
+        if bytes.len() < 56 {
+            let mut out = Vec::with_capacity(1 + bytes.len());
+            out.push(0x80 + bytes.len() as u8);
+            out.extend_from_slice(bytes);
+            return out;
+        }
+        let len_be = (bytes.len() as u64).to_be_bytes();
+        let first_non_zero = len_be
+            .iter()
+            .position(|b| *b != 0)
+            .unwrap_or(len_be.len() - 1);
+        let len_slice = &len_be[first_non_zero..];
+        let mut out = Vec::with_capacity(1 + len_slice.len() + bytes.len());
+        out.push(0xb7 + len_slice.len() as u8);
+        out.extend_from_slice(len_slice);
+        out.extend_from_slice(bytes);
+        out
+    }
+
+    fn rlp_encode_list(items: &[Vec<u8>]) -> Vec<u8> {
+        let payload_len: usize = items.iter().map(std::vec::Vec::len).sum();
+        let mut payload = Vec::with_capacity(payload_len);
+        for item in items {
+            payload.extend_from_slice(item);
+        }
+        if payload.len() < 56 {
+            let mut out = Vec::with_capacity(1 + payload.len());
+            out.push(0xc0 + payload.len() as u8);
+            out.extend_from_slice(&payload);
+            return out;
+        }
+        let len_be = (payload.len() as u64).to_be_bytes();
+        let first_non_zero = len_be
+            .iter()
+            .position(|b| *b != 0)
+            .unwrap_or(len_be.len() - 1);
+        let len_slice = &len_be[first_non_zero..];
+        let mut out = Vec::with_capacity(1 + len_slice.len() + payload.len());
+        out.push(0xf7 + len_slice.len() as u8);
+        out.extend_from_slice(len_slice);
+        out.extend_from_slice(&payload);
         out
     }
 
@@ -628,24 +871,26 @@ mod tests {
         seq: u64,
         expiry_height: u64,
     ) -> v1::SubmitFastPayRequest {
+        let intent = v1::PaymentIntent {
+            sender: Some(v1::Address {
+                data: payment.sender.as_bytes().to_vec(),
+            }),
+            recipient: Some(v1::Address {
+                data: payment.recipient.as_bytes().to_vec(),
+            }),
+            amount: payment.amount,
+            asset: Some(v1::AssetId {
+                data: payment.asset.as_bytes().to_vec(),
+            }),
+        };
+
         v1::SubmitFastPayRequest {
             tx: Some(v1::FastPayTx {
                 chain_id: Some(v1::ChainId { value: 1337 }),
                 tempo_tx: Some(v1::TempoTxBytes {
                     data: encode_payment(payment),
                 }),
-                intent: Some(v1::PaymentIntent {
-                    sender: Some(v1::Address {
-                        data: payment.sender.as_bytes().to_vec(),
-                    }),
-                    recipient: Some(v1::Address {
-                        data: payment.recipient.as_bytes().to_vec(),
-                    }),
-                    amount: payment.amount,
-                    asset: Some(v1::AssetId {
-                        data: payment.asset.as_bytes().to_vec(),
-                    }),
-                }),
+                intent: Some(intent.clone()),
                 nonce: Some(v1::Nonce2D {
                     nonce_key_be: [0x5b; 32].to_vec(),
                     nonce_seq: seq,
@@ -655,6 +900,10 @@ mod tests {
                 }),
                 parent_qc_hash: Vec::new(),
                 client_request_id: String::new(),
+                tempo_tx_format: v1::TempoTxFormat::EvmOpaqueBytesV1 as i32,
+                overlay: Some(v1::OverlayMetadata {
+                    payment: Some(intent),
+                }),
             }),
             parent_qcs: Vec::new(),
         }
@@ -731,6 +980,56 @@ mod tests {
     }
 
     #[test]
+    fn rejects_missing_overlay_and_intent() {
+        let (mut sidecar, payment, _) = make_sidecar();
+        let mut req = submit_request(&payment, 0, 20);
+        let tx = req.tx.as_mut().expect("tx");
+        tx.intent = None;
+        tx.overlay = None;
+        let resp = sidecar.submit_fastpay(req);
+        match resp.result {
+            Some(v1::submit_fast_pay_response::Result::Reject(reject)) => {
+                assert_eq!(reject.code, v1::RejectCode::InvalidFormat as i32);
+            }
+            _ => panic!("expected missing overlay reject"),
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_tempo_tx_format() {
+        let (mut sidecar, payment, _) = make_sidecar();
+        let mut req = submit_request(&payment, 0, 20);
+        req.tx.as_mut().expect("tx").tempo_tx_format = 999;
+        let resp = sidecar.submit_fastpay(req);
+        match resp.result {
+            Some(v1::submit_fast_pay_response::Result::Reject(reject)) => {
+                assert_eq!(reject.code, v1::RejectCode::InvalidFormat as i32);
+            }
+            _ => panic!("expected invalid format reject"),
+        }
+    }
+
+    #[test]
+    fn decodes_legacy_eth_transaction_payload() {
+        let (_, payment, _) = make_sidecar();
+        let decoded = MockSidecar::decode_payment_from_tempo_tx(&encode_payment(&payment))
+            .expect("legacy tx should decode");
+        assert_eq!(decoded.recipient, payment.recipient);
+        assert_eq!(decoded.amount, payment.amount);
+        assert_eq!(decoded.asset, payment.asset);
+    }
+
+    #[test]
+    fn decodes_typed_eth_transaction_payload() {
+        let (_, payment, _) = make_sidecar();
+        let decoded = MockSidecar::decode_payment_from_tempo_tx(&encode_typed_payment(&payment))
+            .expect("typed tx should decode");
+        assert_eq!(decoded.recipient, payment.recipient);
+        assert_eq!(decoded.amount, payment.amount);
+        assert_eq!(decoded.asset, payment.asset);
+    }
+
+    #[test]
     fn computes_parent_qc_credit() {
         let (mut sidecar, payment, _) = make_sidecar();
         let tx_hash = compute_tx_hash(&TxHashInput {
@@ -782,7 +1081,7 @@ mod tests {
                 asset: payment.asset,
             }),
         });
-        req.tx.as_mut().unwrap().intent = Some(v1::PaymentIntent {
+        let child_intent = v1::PaymentIntent {
             sender: Some(v1::Address {
                 data: payment.recipient.as_bytes().to_vec(),
             }),
@@ -793,6 +1092,10 @@ mod tests {
             asset: Some(v1::AssetId {
                 data: payment.asset.as_bytes().to_vec(),
             }),
+        };
+        req.tx.as_mut().unwrap().intent = Some(child_intent.clone());
+        req.tx.as_mut().unwrap().overlay = Some(v1::OverlayMetadata {
+            payment: Some(child_intent),
         });
 
         let resp = sidecar.submit_fastpay(req);
