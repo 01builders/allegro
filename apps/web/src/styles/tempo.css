@@ -1,0 +1,247 @@
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0a;
+  --surface: #121212;
+  --text: #f2f2f2;
+  --muted: #9b9b9b;
+  --line: #2a2a2a;
+  --line-strong: #3d3d3d;
+  --accent: #ffffff;
+  --error: #ff6a6a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: 0.01em;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 3rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.topbar {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 1.15rem;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.topbar-meta {
+  text-align: right;
+  max-width: 430px;
+}
+
+.eyebrow {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.12em;
+  margin: 0;
+}
+
+h1 {
+  margin: 0.2rem 0 0.55rem;
+  font-weight: 600;
+  font-size: 1.7rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1.05rem;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 0.85rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+h1,
+h2 {
+  margin: 0 0 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+p {
+  margin: 0.25rem 0;
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+
+input,
+button {
+  border-radius: 7px;
+  border: 1px solid var(--line-strong);
+  background: #0d0d0d;
+  color: var(--text);
+  padding: 0.55rem 0.68rem;
+  transition: border-color 150ms ease;
+}
+
+input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+button {
+  cursor: pointer;
+  background: #f2f2f2;
+  color: #0a0a0a;
+  border-color: #f2f2f2;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+button:hover {
+  background: #ffffff;
+}
+
+.muted {
+  color: var(--muted);
+  margin: 0.1rem 0;
+}
+
+.error {
+  color: var(--error);
+}
+
+.status {
+  display: grid;
+  gap: 0.25rem;
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+}
+
+.stage {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.23rem 0.58rem;
+  width: fit-content;
+  border: 1px solid var(--line-strong);
+  background: #121212;
+  color: #e7e7e7;
+}
+
+.stage-accepted {
+  border-color: #666;
+}
+.stage-certified {
+  border-color: #7a7a7a;
+}
+.stage-queued_onchain,
+.stage-included {
+  border-color: #8f8f8f;
+}
+.stage-finalized {
+  border-color: #ffffff;
+  color: #ffffff;
+}
+.stage-stage_unspecified {
+  border-color: #4f4f4f;
+  color: #b8b8b8;
+}
+
+pre {
+  max-height: 280px;
+  overflow: auto;
+  background: #0d0d0d;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.75rem;
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.rail {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.summary {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(110px, auto) 1fr;
+  gap: 0.4rem 0.75rem;
+}
+
+.summary dt {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+}
+
+.summary dd {
+  margin: 0;
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+.track-row {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.track-row button {
+  min-width: 94px;
+}
+
+@media (max-width: 640px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    display: grid;
+  }
+
+  .topbar-meta {
+    text-align: left;
+    max-width: none;
+  }
+
+  .app {
+    padding: 1rem 0.75rem 2rem;
+  }
+}

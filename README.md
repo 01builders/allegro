@@ -40,6 +40,10 @@ cargo run -p fastpay-sidecar -- \
   --chain-id 1337 \
   --epoch 1 \
   --block-height 1 \
+  --max-total-certs 10000 \
+  --max-known-qcs 4096 \
+  --max-request-cache 8192 \
+  --max-bulletin-board-response 1000 \
   --demo-balances \
   --peers http://127.0.0.1:50052
 ```
@@ -55,11 +59,25 @@ cargo run -p fastpay-sidecar -- \
   --chain-id 1337 \
   --epoch 1 \
   --block-height 1 \
+  --max-total-certs 10000 \
+  --max-known-qcs 4096 \
+  --max-request-cache 8192 \
+  --max-bulletin-board-response 1000 \
   --demo-balances \
   --peers http://127.0.0.1:50051
 ```
 
-Then run sidecar integration tests:
+Then run the chained external client flow against those sidecars:
+
+```bash
+cargo run -p demo --bin grpc_chained_demo -- \
+  --dave-url http://127.0.0.1:50051 \
+  --edgar-url http://127.0.0.1:50052 \
+  --chain-id 1337 \
+  --epoch 1
+```
+
+And/or run sidecar integration tests:
 
 ```bash
 cargo test -p fastpay-sidecar --test grpc_integration
@@ -72,3 +90,13 @@ cargo fmt -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
+
+## Web UI scaffold (Phase 2/3 bridge)
+
+A minimal Tempo-styled frontend now exists at `apps/web` for:
+- submitting payments to the FastPay backend
+- reading chain head / tx status from Tempo-backed read APIs
+
+See:
+- `apps/web/README.md`
+- `docs/web_rest_contract.md`

@@ -17,7 +17,7 @@ use tracing::info;
 
 use fastpay_sidecar::gossip::{run_gossip_loop, GossipConfig};
 use fastpay_sidecar::service::FastPaySidecarService;
-use fastpay_sidecar::state::SidecarState;
+use fastpay_sidecar::state::{SidecarLimits, SidecarState};
 
 /// FastPay validator sidecar.
 #[derive(Parser, Debug)]
@@ -66,6 +66,22 @@ struct Cli {
     /// Pre-seed demo balances (Alice=15, Bob=5, Carol=5).
     #[arg(long)]
     demo_balances: bool,
+
+    /// Maximum total certificates retained in memory.
+    #[arg(long, default_value = "10000")]
+    max_total_certs: usize,
+
+    /// Maximum known parent QCs retained in memory.
+    #[arg(long, default_value = "4096")]
+    max_known_qcs: usize,
+
+    /// Maximum idempotency cache entries retained in memory.
+    #[arg(long, default_value = "8192")]
+    max_request_cache: usize,
+
+    /// Maximum certificates returned per GetBulletinBoard response.
+    #[arg(long, default_value = "1000")]
+    max_bulletin_board_response: u32,
 }
 
 fn parse_hex_32(s: &str) -> Result<[u8; 32], String> {
@@ -126,6 +142,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
     state.set_chain_head(cli.block_height, 1_700_000_000_000);
     state.set_gossip_peers(cli.peers.clone());
+    state.set_limits(SidecarLimits {
+        max_total_certs: cli.max_total_certs,
+        max_known_qcs: cli.max_known_qcs,
+        max_request_cache: cli.max_request_cache,
+        max_bulletin_board_response: cli.max_bulletin_board_response,
+    });
 
     let service = FastPaySidecarService::new(Arc::clone(&state));
 

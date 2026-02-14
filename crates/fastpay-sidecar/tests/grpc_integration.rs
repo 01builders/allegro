@@ -270,6 +270,69 @@ async fn grpc_retry_is_idempotent_for_same_request() {
 }
 
 #[tokio::test]
+async fn grpc_rejects_reused_request_id_for_different_tx() {
+    let dave = start_sidecar("Dave", ValidatorId::new([0xd1; 32]), [0x41; 32]).await;
+    let dave_url = format!("http://{}", dave.addr);
+
+    let transport = GrpcTransport::new(&dave_url);
+    let scenario = DemoScenario::new(CHAIN_ID, EPOCH);
+    let alice = scenario.accounts.alice;
+    let bob = scenario.accounts.bob;
+    let carol = scenario.accounts.carol;
+    let asset = scenario.accounts.asset;
+    let nonce_key = NonceKey::new([0x5b; 32]);
+
+    let first = TxBuilder::new(CHAIN_ID)
+        .with_payment(alice, bob, 10, asset)
+        .with_sender_private_key(scenario.account_keys.alice)
+        .with_nonce_seq(nonce_key, 0)
+        .with_expiry(Expiry::MaxBlockHeight(100))
+        .with_client_request_id("idem-conflict")
+        .build()
+        .unwrap();
+    let second = TxBuilder::new(CHAIN_ID)
+        .with_payment(alice, carol, 7, asset)
+        .with_sender_private_key(scenario.account_keys.alice)
+        .with_nonce_seq(nonce_key, 1)
+        .with_expiry(Expiry::MaxBlockHeight(100))
+        .with_client_request_id("idem-conflict")
+        .build()
+        .unwrap();
+
+    let first_resp = transport
+        .submit_fastpay(
+            v1::SubmitFastPayRequest {
+                tx: Some(first.tx),
+                parent_qcs: Vec::new(),
+            },
+            request_meta("idem-conflict"),
+        )
+        .await
+        .unwrap();
+    let _ = cert_from_response(first_resp);
+
+    let second_resp = transport
+        .submit_fastpay(
+            v1::SubmitFastPayRequest {
+                tx: Some(second.tx),
+                parent_qcs: Vec::new(),
+            },
+            request_meta("idem-conflict"),
+        )
+        .await
+        .unwrap();
+    let reject = reject_from_response(second_resp);
+    assert_eq!(reject.code, v1::RejectCode::InvalidFormat as i32);
+    assert!(
+        reject
+            .message
+            .contains("client_request_id reused for different tx"),
+        "unexpected reject message: {}",
+        reject.message
+    );
+}
+
+#[tokio::test]
 async fn grpc_single_payment_alice_to_bob() {
     let dave = start_sidecar("Dave", ValidatorId::new([0xd1; 32]), [0x41; 32]).await;
     let edgar = start_sidecar("Edgar", ValidatorId::new([0xe1; 32]), [0x42; 32]).await;

@@ -1,0 +1,36 @@
+[package]
+name = "fastpay-backend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "fastpay-backend"
+path = "src/main.rs"
+
+[dependencies]
+fastpay-crypto = { path = "../fastpay-crypto" }
+fastpay-proto = { path = "../fastpay-proto" }
+fastpay-types = { path = "../fastpay-types" }
+
+alloy-consensus.workspace = true
+alloy-eips.workspace = true
+alloy-primitives = { workspace = true, features = ["k256"] }
+axum = "0.8"
+clap = { version = "4", features = ["derive"] }
+futures.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_json = "1"
+thiserror.workspace = true
+tokio.workspace = true
+tonic.workspace = true
+tower-http = { version = "0.6", features = ["cors"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+fastpay-sidecar = { path = "../fastpay-sidecar" }
+fastpay-sidecar-mock = { path = "../fastpay-sidecar-mock" }
+fastpay-user-client = { path = "../fastpay-user-client" }
+tokio-stream = { version = "0.1", features = ["net"] }
