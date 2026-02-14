@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use alloy_consensus::TxEnvelope;
+use alloy_consensus::{transaction::SignableTransaction, TxEnvelope};
 use alloy_eips::eip2718::Decodable2718;
 use alloy_primitives::TxKind;
 use fastpay_crypto::{
@@ -31,6 +31,7 @@ pub struct DecodedTempoPayload {
 }
 
 const MAX_TEMPO_TX_BYTES: usize = 128 * 1024;
+const TIP20_PAYMENT_PREFIX: [u8; 12] = [0x20, 0xc0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 #[derive(Debug, Clone)]
 pub struct MockSidecar {
@@ -169,6 +170,14 @@ impl MockSidecar {
             }
         };
 
+        let recovered_sender = recover_sender_from_tempo_tx(&tempo_tx.data)?;
+        if recovered_sender != decoded.sender {
+            return Err(reject(
+                v1::RejectCode::InvalidFormat,
+                "overlay sender does not match tx signer",
+            ));
+        }
+
         if payload.recipient != decoded.recipient
             || payload.amount != decoded.amount
             || payload.asset != decoded.asset
@@ -292,6 +301,13 @@ impl MockSidecar {
                 ));
             }
         };
+
+        if !token_addr.as_slice().starts_with(&TIP20_PAYMENT_PREFIX) {
+            return Err(reject(
+                v1::RejectCode::NotPaymentTx,
+                "token address is not TIP-20 payment-prefixed",
+            ));
+        }
 
         if input.len() != 68 || input[0..4] != [0xa9, 0x05, 0x9c, 0xbb] {
             return Err(reject(
@@ -534,6 +550,35 @@ impl MockSidecar {
     }
 }
 
+fn recover_sender_from_tempo_tx(bytes: &[u8]) -> Result<Address, v1::RejectReason> {
+    let envelope = TxEnvelope::decode_2718_exact(bytes).map_err(|_| {
+        reject(
+            v1::RejectCode::InvalidFormat,
+            "invalid ethereum tx encoding",
+        )
+    })?;
+    let signer = match envelope {
+        TxEnvelope::Legacy(signed) => signed
+            .signature()
+            .recover_address_from_prehash(&signed.tx().signature_hash()),
+        TxEnvelope::Eip2930(signed) => signed
+            .signature()
+            .recover_address_from_prehash(&signed.tx().signature_hash()),
+        TxEnvelope::Eip1559(signed) => signed
+            .signature()
+            .recover_address_from_prehash(&signed.tx().signature_hash()),
+        TxEnvelope::Eip4844(signed) => signed
+            .signature()
+            .recover_address_from_prehash(&signed.tx().signature_hash()),
+        TxEnvelope::Eip7702(signed) => signed
+            .signature()
+            .recover_address_from_prehash(&signed.tx().signature_hash()),
+    }
+    .map_err(|_| reject(v1::RejectCode::InvalidFormat, "unable to recover tx signer"))?;
+    Address::from_slice(signer.as_slice())
+        .map_err(|_| reject(v1::RejectCode::InvalidFormat, "invalid signer address"))
+}
+
 fn parse_tempo_tx_format(tx: &v1::FastPayTx) -> Result<v1::TempoTxFormat, v1::RejectReason> {
     if tx.tempo_tx_format == v1::TempoTxFormat::Unspecified as i32 {
         return Err(reject(
@@ -712,6 +757,11 @@ fn cert_involves_address(cert: &v1::ValidatorCertificate, address: &[u8]) -> boo
 mod tests {
     use std::collections::HashMap;
 
+    use alloy_consensus::{transaction::SignableTransaction, TxEip1559, TxLegacy};
+    use alloy_eips::{eip2718::Encodable2718, eip2930::AccessList};
+    use alloy_primitives::{Address as AlloyAddress, Bytes, U256};
+    use alloy_signer::SignerSync;
+    use alloy_signer_local::PrivateKeySigner;
     use fastpay_crypto::{
         compute_effects_hash, compute_qc_hash, compute_tx_hash, Ed25519Signer, EffectsHashInput,
         TxHashInput,
@@ -721,121 +771,85 @@ mod tests {
 
     use crate::mock_sidecar::{DecodedPayment, MockSidecar};
 
+    fn address_from_private_key(private_key: [u8; 32]) -> Address {
+        Address::from_slice(
+            PrivateKeySigner::from_slice(&private_key)
+                .expect("valid private key")
+                .address()
+                .as_slice(),
+        )
+        .expect("20-byte address")
+    }
+
+    fn private_key_for_sender(sender: Address) -> [u8; 32] {
+        for key in [[0x11; 32], [0x22; 32], [0x33; 32]] {
+            if address_from_private_key(key) == sender {
+                return key;
+            }
+        }
+        panic!("unknown sender address for test signer")
+    }
+
+    fn tip20_asset() -> AssetId {
+        AssetId::new([
+            0x20, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaa, 0xaa,
+            0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
+        ])
+    }
+
+    fn erc20_transfer_calldata(recipient: Address, amount: u64) -> Vec<u8> {
+        let mut data = Vec::with_capacity(68);
+        data.extend_from_slice(&[0xa9, 0x05, 0x9c, 0xbb]);
+        data.extend_from_slice(&[0u8; 12]);
+        data.extend_from_slice(recipient.as_bytes());
+        data.extend_from_slice(&[0u8; 24]);
+        data.extend_from_slice(&amount.to_be_bytes());
+        data
+    }
+
     fn encode_payment(payment: &DecodedPayment) -> Vec<u8> {
-        let calldata = {
-            let mut data = Vec::with_capacity(68);
-            data.extend_from_slice(&[0xa9, 0x05, 0x9c, 0xbb]);
-            data.extend_from_slice(&[0u8; 12]);
-            data.extend_from_slice(payment.recipient.as_bytes());
-            data.extend_from_slice(&[0u8; 24]);
-            data.extend_from_slice(&payment.amount.to_be_bytes());
-            data
+        let signer = PrivateKeySigner::from_slice(&private_key_for_sender(payment.sender))
+            .expect("valid sender key");
+        let tx = TxLegacy {
+            chain_id: Some(1337),
+            nonce: 0,
+            gas_price: 1,
+            gas_limit: 80_000,
+            to: AlloyAddress::from_slice(payment.asset.as_bytes()).into(),
+            value: U256::ZERO,
+            input: Bytes::from(erc20_transfer_calldata(payment.recipient, payment.amount)),
         };
-        let fields = [
-            rlp_encode_u64(0),
-            rlp_encode_u64(1),
-            rlp_encode_u64(80_000),
-            rlp_encode_bytes(payment.asset.as_bytes()),
-            rlp_encode_u64(0),
-            rlp_encode_bytes(&calldata),
-            rlp_encode_u64(27),
-            rlp_encode_u64(1),
-            rlp_encode_u64(1),
-        ];
-        rlp_encode_list(&fields)
+        let signature = signer
+            .sign_hash_sync(&tx.signature_hash())
+            .expect("sign legacy tx");
+        tx.into_signed(signature).encoded_2718()
     }
 
     fn encode_typed_payment(payment: &DecodedPayment) -> Vec<u8> {
-        let calldata = {
-            let mut data = Vec::with_capacity(68);
-            data.extend_from_slice(&[0xa9, 0x05, 0x9c, 0xbb]);
-            data.extend_from_slice(&[0u8; 12]);
-            data.extend_from_slice(payment.recipient.as_bytes());
-            data.extend_from_slice(&[0u8; 24]);
-            data.extend_from_slice(&payment.amount.to_be_bytes());
-            data
+        let signer = PrivateKeySigner::from_slice(&private_key_for_sender(payment.sender))
+            .expect("valid sender key");
+        let tx = TxEip1559 {
+            chain_id: 1337,
+            nonce: 0,
+            gas_limit: 80_000,
+            max_fee_per_gas: 1,
+            max_priority_fee_per_gas: 1,
+            to: AlloyAddress::from_slice(payment.asset.as_bytes()).into(),
+            value: U256::ZERO,
+            access_list: AccessList::default(),
+            input: Bytes::from(erc20_transfer_calldata(payment.recipient, payment.amount)),
         };
-        let fields = [
-            rlp_encode_u64(1337),
-            rlp_encode_u64(0),
-            rlp_encode_u64(1),
-            rlp_encode_u64(1),
-            rlp_encode_u64(80_000),
-            rlp_encode_bytes(payment.asset.as_bytes()),
-            rlp_encode_u64(0),
-            rlp_encode_bytes(&calldata),
-            rlp_encode_list(&[]),
-            rlp_encode_u64(1),
-            rlp_encode_u64(1),
-            rlp_encode_u64(1),
-        ];
-        let mut out = vec![0x02];
-        out.extend_from_slice(&rlp_encode_list(&fields));
-        out
-    }
-
-    fn rlp_encode_u64(value: u64) -> Vec<u8> {
-        if value == 0 {
-            return vec![0x80];
-        }
-        let be = value.to_be_bytes();
-        let first_non_zero = be.iter().position(|b| *b != 0).unwrap_or(be.len() - 1);
-        rlp_encode_bytes(&be[first_non_zero..])
-    }
-
-    fn rlp_encode_bytes(bytes: &[u8]) -> Vec<u8> {
-        if bytes.len() == 1 && bytes[0] < 0x80 {
-            return vec![bytes[0]];
-        }
-        if bytes.len() < 56 {
-            let mut out = Vec::with_capacity(1 + bytes.len());
-            out.push(0x80 + bytes.len() as u8);
-            out.extend_from_slice(bytes);
-            return out;
-        }
-        let len_be = (bytes.len() as u64).to_be_bytes();
-        let first_non_zero = len_be
-            .iter()
-            .position(|b| *b != 0)
-            .unwrap_or(len_be.len() - 1);
-        let len_slice = &len_be[first_non_zero..];
-        let mut out = Vec::with_capacity(1 + len_slice.len() + bytes.len());
-        out.push(0xb7 + len_slice.len() as u8);
-        out.extend_from_slice(len_slice);
-        out.extend_from_slice(bytes);
-        out
-    }
-
-    fn rlp_encode_list(items: &[Vec<u8>]) -> Vec<u8> {
-        let payload_len: usize = items.iter().map(std::vec::Vec::len).sum();
-        let mut payload = Vec::with_capacity(payload_len);
-        for item in items {
-            payload.extend_from_slice(item);
-        }
-        if payload.len() < 56 {
-            let mut out = Vec::with_capacity(1 + payload.len());
-            out.push(0xc0 + payload.len() as u8);
-            out.extend_from_slice(&payload);
-            return out;
-        }
-        let len_be = (payload.len() as u64).to_be_bytes();
-        let first_non_zero = len_be
-            .iter()
-            .position(|b| *b != 0)
-            .unwrap_or(len_be.len() - 1);
-        let len_slice = &len_be[first_non_zero..];
-        let mut out = Vec::with_capacity(1 + len_slice.len() + payload.len());
-        out.push(0xf7 + len_slice.len() as u8);
-        out.extend_from_slice(len_slice);
-        out.extend_from_slice(&payload);
-        out
+        let signature = signer
+            .sign_hash_sync(&tx.signature_hash())
+            .expect("sign typed tx");
+        tx.into_signed(signature).encoded_2718()
     }
 
     fn make_sidecar() -> (MockSidecar, DecodedPayment, DecodedPayment) {
-        let alice = Address::new([0x01; 20]);
-        let bob = Address::new([0x02; 20]);
-        let carol = Address::new([0x03; 20]);
-        let asset = AssetId::new([0xaa; 20]);
+        let alice = address_from_private_key([0x11; 32]);
+        let bob = address_from_private_key([0x22; 32]);
+        let carol = address_from_private_key([0x33; 32]);
+        let asset = tip20_asset();
         let payment_ab = DecodedPayment {
             sender: alice,
             recipient: bob,

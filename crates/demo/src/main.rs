@@ -13,6 +13,7 @@ use tracing::info;
 
 fn make_client(
     address: Address,
+    sender_private_key: [u8; 32],
     transport: MultiValidatorTransport<MockTransport>,
     verify_ctx: VerificationContext,
 ) -> FastPayClient<MockTransport, Ed25519Certificate, MultiCertQC, SimpleAssembler> {
@@ -25,6 +26,8 @@ fn make_client(
         NonceKey::new([0x5b; 32]),
         parse_ed25519_proto_cert,
     )
+    .with_sender_private_key(address, sender_private_key)
+    .expect("valid sender key")
 }
 
 #[tokio::main]
@@ -37,6 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let scenario = DemoScenario::new(1337, 1);
     let accounts = scenario.accounts;
+    let account_keys = scenario.account_keys;
     let dave_transport = MockTransport::new(scenario.dave);
     let edgar_transport = MockTransport::new(scenario.edgar);
 
@@ -69,16 +73,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut alice = make_client(
         accounts.alice,
+        account_keys.alice,
         MultiValidatorTransport::new(vec![dave_transport.clone(), edgar_transport.clone()]),
         verify_ctx.clone(),
     );
     let mut bob = make_client(
         accounts.bob,
+        account_keys.bob,
         MultiValidatorTransport::new(vec![dave_transport.clone(), edgar_transport.clone()]),
         verify_ctx.clone(),
     );
     let mut carol = make_client(
         accounts.carol,
+        account_keys.carol,
         MultiValidatorTransport::new(vec![dave_transport.clone(), edgar_transport.clone()]),
         verify_ctx,
     );

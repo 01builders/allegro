@@ -21,7 +21,7 @@ pub use transport::{
     MockTransport, MultiValidatorTransport, RequestMeta, RetryPolicy, SidecarTransport,
     TransportConfig, TransportError, ValidatorEndpoint,
 };
-pub use tx_builder::{encode_payment_tempo_tx, BuiltTx, TxBuilder, TxBuilderError};
+pub use tx_builder::{encode_payment_tempo_tx_signed, BuiltTx, TxBuilder, TxBuilderError};
 pub use wallet::{
     CacheLimits, PendingStatus, PendingTx, StateEvent, WalletError, WalletSnapshot, WalletState,
 };

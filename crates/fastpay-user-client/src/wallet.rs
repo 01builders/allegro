@@ -375,6 +375,7 @@ fn prune_qcs<Q>(qcs: &mut HashMap<TxHash, Q>, max: usize, pending: &HashMap<TxHa
 
 #[cfg(test)]
 mod tests {
+    use alloy_signer_local::PrivateKeySigner;
     use fastpay_crypto::{Ed25519Signer, MultiCertQC, SimpleAssembler};
     use fastpay_types::{
         AssetId, CertSigningContext, Expiry, NonceKey, QuorumAssembler, QuorumCert, Signer,
@@ -386,12 +387,29 @@ mod tests {
     use fastpay_types::Address;
 
     fn make_qc() -> (MultiCertQC, AssetId, NonceKey, u64) {
-        let sender = Address::new([0x01; 20]);
-        let recipient = Address::new([0x02; 20]);
-        let asset = AssetId::new([0xaa; 20]);
+        let sender_private_key = [0x11; 32];
+        let sender = Address::from_slice(
+            PrivateKeySigner::from_slice(&sender_private_key)
+                .expect("valid key")
+                .address()
+                .as_slice(),
+        )
+        .expect("address");
+        let recipient = Address::from_slice(
+            PrivateKeySigner::from_slice(&[0x22; 32])
+                .expect("valid key")
+                .address()
+                .as_slice(),
+        )
+        .expect("address");
+        let asset = AssetId::new([
+            0x20, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaa, 0xaa,
+            0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
+        ]);
         let key = NonceKey::new([0x5b; 32]);
         let built = TxBuilder::new(1337)
             .with_payment(sender, recipient, 10, asset)
+            .with_sender_private_key(sender_private_key)
             .with_nonce(key)
             .with_expiry(Expiry::MaxBlockHeight(100))
             .build()

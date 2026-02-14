@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::RwLock;
 
-use alloy_consensus::TxEnvelope;
+use alloy_consensus::{transaction::SignableTransaction, TxEnvelope};
 use alloy_eips::eip2718::Decodable2718;
 use alloy_primitives::TxKind;
 use fastpay_crypto::{
@@ -38,6 +38,7 @@ pub struct DecodedTempoPayload {
 }
 
 const MAX_TEMPO_TX_BYTES: usize = 128 * 1024;
+const TIP20_PAYMENT_PREFIX: [u8; 12] = [0x20, 0xc0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 // ---------------------------------------------------------------------------
 // Inner (mutable state behind RwLock)
@@ -421,13 +422,21 @@ fn prepare_submission(
     let decoded = overlay_payment_from_fastpay_tx(&tx)?;
     let payload = match tx_format {
         v1::TempoTxFormat::EvmOpaqueBytesV1 => decode_payment_from_tempo_tx(&tempo_tx.data)?,
-        v1::TempoTxFormat::Unspecified => {
+        _ => {
             return Err(reject(
                 v1::RejectCode::InvalidFormat,
-                "tempo_tx_format unspecified",
+                "unsupported tempo_tx_format",
             ));
         }
     };
+
+    let recovered_sender = recover_sender_from_tempo_tx(&tempo_tx.data)?;
+    if recovered_sender != decoded.sender {
+        return Err(reject(
+            v1::RejectCode::InvalidFormat,
+            "overlay sender does not match tx signer",
+        ));
+    }
 
     if payload.recipient != decoded.recipient
         || payload.amount != decoded.amount
@@ -569,6 +578,35 @@ fn payment_intent_to_decoded(
     })
 }
 
+fn recover_sender_from_tempo_tx(bytes: &[u8]) -> Result<Address, v1::RejectReason> {
+    let envelope = TxEnvelope::decode_2718_exact(bytes).map_err(|_| {
+        reject(
+            v1::RejectCode::InvalidFormat,
+            "invalid ethereum tx encoding",
+        )
+    })?;
+    let signer = match envelope {
+        TxEnvelope::Legacy(signed) => signed
+            .signature()
+            .recover_address_from_prehash(&signed.tx().signature_hash()),
+        TxEnvelope::Eip2930(signed) => signed
+            .signature()
+            .recover_address_from_prehash(&signed.tx().signature_hash()),
+        TxEnvelope::Eip1559(signed) => signed
+            .signature()
+            .recover_address_from_prehash(&signed.tx().signature_hash()),
+        TxEnvelope::Eip4844(signed) => signed
+            .signature()
+            .recover_address_from_prehash(&signed.tx().signature_hash()),
+        TxEnvelope::Eip7702(signed) => signed
+            .signature()
+            .recover_address_from_prehash(&signed.tx().signature_hash()),
+    }
+    .map_err(|_| reject(v1::RejectCode::InvalidFormat, "unable to recover tx signer"))?;
+    Address::from_slice(signer.as_slice())
+        .map_err(|_| reject(v1::RejectCode::InvalidFormat, "invalid signer address"))
+}
+
 pub fn decode_payment_from_tempo_tx(bytes: &[u8]) -> Result<DecodedTempoPayload, v1::RejectReason> {
     let envelope = TxEnvelope::decode_2718_exact(bytes).map_err(|_| {
         reject(
@@ -614,6 +652,13 @@ pub fn decode_payment_from_tempo_tx(bytes: &[u8]) -> Result<DecodedTempoPayload,
             ));
         }
     };
+
+    if !token_addr.as_slice().starts_with(&TIP20_PAYMENT_PREFIX) {
+        return Err(reject(
+            v1::RejectCode::NotPaymentTx,
+            "token address is not TIP-20 payment-prefixed",
+        ));
+    }
 
     if input.len() != 68 || input[0..4] != [0xa9, 0x05, 0x9c, 0xbb] {
         return Err(reject(

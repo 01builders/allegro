@@ -21,6 +21,11 @@ rand.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+alloy-consensus.workspace = true
+alloy-eips.workspace = true
+alloy-primitives.workspace = true
+alloy-signer.workspace = true
+alloy-signer-local.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio.workspace = true
