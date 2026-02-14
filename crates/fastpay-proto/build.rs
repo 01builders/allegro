@@ -1,4 +1,4 @@
-//! Build script to generate Rust types from proto files using prost.
+//! Build script to generate Rust types and gRPC service stubs from proto files.
 
 use std::path::PathBuf;
 
@@ -14,10 +14,9 @@ fn main() {
         println!("cargo:rerun-if-changed={}", file.display());
     }
 
-    let mut config = prost_build::Config::new();
-    config.compile_well_known_types();
-
-    config
+    tonic_build::configure()
+        .build_server(true)
+        .build_client(true)
         .compile_protos(&proto_files, &[proto_dir])
         .expect("failed to compile FastPay protobuf definitions");
 }

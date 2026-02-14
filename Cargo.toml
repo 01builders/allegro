@@ -5,6 +5,7 @@ members = [
     "crates/fastpay-proto",
     "crates/fastpay-user-client",
     "crates/fastpay-sidecar-mock",
+    "crates/fastpay-sidecar",
     "crates/demo",
 ]
 resolver = "2"
