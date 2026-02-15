@@ -1,0 +1,42 @@
+services:
+  sidecar-1:
+    build: .
+    command:
+      - fastpay-sidecar
+      - --listen=0.0.0.0:50051
+      - --name=Dave
+      - --seed=0707070707070707070707070707070707070707070707070707070707070707
+      - --validator-id=4444444444444444444444444444444444444444444444444444444444444444
+      - --chain-id=1337
+      - --demo-balances
+      - --peers=http://sidecar-2:50051
+    expose:
+      - "50051"
+
+  sidecar-2:
+    build: .
+    command:
+      - fastpay-sidecar
+      - --listen=0.0.0.0:50051
+      - --name=Eve
+      - --seed=0808080808080808080808080808080808080808080808080808080808080808
+      - --validator-id=5555555555555555555555555555555555555555555555555555555555555555
+      - --chain-id=1337
+      - --demo-balances
+      - --peers=http://sidecar-1:50051
+    expose:
+      - "50051"
+
+  backend:
+    build: .
+    command:
+      - fastpay-backend
+      - --listen=0.0.0.0:60051
+      - --http-listen=0.0.0.0:8080
+      - --sidecars=http://sidecar-1:50051,http://sidecar-2:50051
+      - --qc-threshold=2
+    ports:
+      - "8080:8080"
+    depends_on:
+      - sidecar-1
+      - sidecar-2

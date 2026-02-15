@@ -105,10 +105,34 @@ fn parse_hex_32(s: &str) -> Result<[u8; 32], String> {
 }
 
 fn demo_balances() -> HashMap<Address, HashMap<AssetId, u64>> {
-    let alice = Address::new([0x01; 20]);
-    let bob = Address::new([0x02; 20]);
-    let carol = Address::new([0x03; 20]);
-    let asset = AssetId::new([0xaa; 20]);
+    use alloy_signer_local::PrivateKeySigner;
+
+    // Derive EVM addresses from the same private keys used by DemoScenario
+    // in fastpay-sidecar-mock so the backend and sidecars agree on addresses.
+    let alice = Address::from_slice(
+        PrivateKeySigner::from_slice(&[0x11; 32])
+            .expect("valid key")
+            .address()
+            .as_slice(),
+    )
+    .expect("valid address");
+    let bob = Address::from_slice(
+        PrivateKeySigner::from_slice(&[0x22; 32])
+            .expect("valid key")
+            .address()
+            .as_slice(),
+    )
+    .expect("valid address");
+    let carol = Address::from_slice(
+        PrivateKeySigner::from_slice(&[0x33; 32])
+            .expect("valid key")
+            .address()
+            .as_slice(),
+    )
+    .expect("valid address");
+    let asset = AssetId::new([
+        0x20, 0xc0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
+    ]);
     HashMap::from([
         (alice, HashMap::from([(asset, 15)])),
         (bob, HashMap::from([(asset, 5)])),

@@ -1,21 +1,34 @@
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 
 use alloy_consensus::{transaction::SignableTransaction, TxEnvelope};
 use alloy_eips::eip2718::Decodable2718;
 use alloy_primitives::TxKind;
 use axum::extract::{Path, State};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use fastpay_crypto::{compute_effects_hash, compute_tx_hash, EffectsHashInput, TxHashInput};
+use fastpay_crypto::{
+    compute_effects_hash, compute_tx_hash, Ed25519Certificate, EffectsHashInput, MultiCertQC,
+    SimpleAssembler, TxHashInput,
+};
 use fastpay_proto::v1;
-use fastpay_types::{Address, AssetId, EffectsHash, Expiry, NonceKey, TxHash};
+use fastpay_sidecar_mock::DemoScenario;
+use fastpay_types::{
+    Address, AssetId, EffectsHash, Expiry, NonceKey, QuorumCert, TxHash, ValidatorId,
+    VerificationContext,
+};
+use fastpay_user_client::{parse_ed25519_proto_cert, CertManager, TxBuilder};
 use serde::{Deserialize, Serialize};
+use tokio_stream::wrappers::ReceiverStream;
 use tower_http::cors::CorsLayer;
 use tracing::warn;
 
 use crate::state::{compare_chain_head, FastPayBackendState};
 use crate::upstream::{
-    fanout_get_bulletin_board, fanout_get_chain_head, fanout_submit_fastpay, UpstreamConfig,
+    fanout_get_bulletin_board, fanout_get_chain_head, fanout_submit_fastpay, SidecarEndpoint,
+    UpstreamConfig,
 };
 
 /// Demo nonce key: 0x5b repeated 32 times.
@@ -39,6 +52,7 @@ pub fn router(app_state: Arc<AppState>) -> Router {
         .route("/api/v1/submit-raw-tx", post(submit_raw_tx))
         .route("/api/v1/chain/head", get(chain_head))
         .route("/api/v1/tx/{tx_hash}/status", get(tx_status))
+        .route("/api/v1/demo/chained-flow", post(demo_chained_flow))
         .layer(CorsLayer::permissive())
         .with_state(app_state)
 }
@@ -423,6 +437,382 @@ async fn tx_status(
         qc_formed,
         qc_hash: qc_hash_str,
     }))
+}
+
+// ---------------------------------------------------------------------------
+// SSE chained-flow demo
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct DemoStepEvent {
+    step: &'static str,
+    label: &'static str,
+    description: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tx_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    qc_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parent_qc_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cert_count: Option<u32>,
+    timestamp_ms: u64,
+}
+
+#[derive(Serialize)]
+struct DemoChainHeadEvent {
+    block_height: u64,
+    block_hash: String,
+    unix_millis: u64,
+}
+
+#[derive(Serialize)]
+struct DemoDoneEvent {
+    success: bool,
+    total_ms: u64,
+    start_block_height: u64,
+}
+
+#[derive(Serialize)]
+struct DemoErrorEvent {
+    message: String,
+}
+
+fn elapsed_ms(start: &Instant) -> u64 {
+    start.elapsed().as_millis() as u64
+}
+
+/// Query validator info from a sidecar via direct tonic call (Send-compatible).
+async fn get_validator_info_direct(url: &str) -> Result<v1::GetValidatorInfoResponse, String> {
+    let mut client = v1::fast_pay_sidecar_client::FastPaySidecarClient::connect(url.to_string())
+        .await
+        .map_err(|e| format!("connect to {url}: {e}"))?;
+    client
+        .get_validator_info(v1::GetValidatorInfoRequest::default())
+        .await
+        .map(|r| r.into_inner())
+        .map_err(|e| format!("get_validator_info from {url}: {e}"))
+}
+
+async fn build_demo_verify_ctx(
+    endpoints: &[SidecarEndpoint],
+    chain_id: u64,
+    epoch: u64,
+) -> Result<VerificationContext, String> {
+    if endpoints.len() < 2 {
+        return Err("need at least 2 sidecar endpoints".to_string());
+    }
+    let mut committee = HashMap::new();
+    for ep in endpoints {
+        let info = get_validator_info_direct(&ep.url)
+            .await?
+            .validator
+            .ok_or_else(|| format!("missing validator info from {}", ep.url))?;
+        committee.insert(
+            ValidatorId::from_slice(&info.id).map_err(|e| e.to_string())?,
+            <[u8; 32]>::try_from(info.pubkey.as_slice()).map_err(|e| e.to_string())?,
+        );
+    }
+    Ok(VerificationContext {
+        chain_id,
+        domain_tag: "tempo.fastpay.cert.v1".to_string(),
+        protocol_version: 1,
+        epoch,
+        committee,
+    })
+}
+
+/// Build a tx, fanout-submit to sidecars, collect certs, assemble QC.
+/// Returns (QC, proto QC) on success.
+#[allow(clippy::too_many_arguments)]
+async fn demo_send_payment(
+    upstream: &UpstreamConfig,
+    cert_mgr: &mut CertManager<Ed25519Certificate, MultiCertQC, SimpleAssembler>,
+    chain_id: u64,
+    sender: Address,
+    sender_key: [u8; 32],
+    recipient: Address,
+    amount: u64,
+    asset: AssetId,
+    nonce_key: NonceKey,
+    nonce_seq: u64,
+    expiry: Expiry,
+    parent_qc: Option<&MultiCertQC>,
+    parent_proto_qc: Option<v1::QuorumCertificate>,
+) -> Result<(MultiCertQC, v1::QuorumCertificate), String> {
+    let mut builder = TxBuilder::new(chain_id)
+        .with_payment(sender, recipient, amount, asset)
+        .with_sender_private_key(sender_key)
+        .with_nonce_seq(nonce_key, nonce_seq)
+        .with_expiry(expiry);
+    if let Some(pqc) = parent_qc {
+        builder = builder.with_parent_qc(pqc);
+    }
+    let built = builder.build().map_err(|e| format!("build tx: {e}"))?;
+
+    let submit_req = v1::SubmitFastPayRequest {
+        tx: Some(built.tx.clone()),
+        parent_qcs: parent_proto_qc.into_iter().collect(),
+    };
+    let upstream_results = fanout_submit_fastpay(upstream, submit_req).await;
+
+    let mut proto_certs = Vec::new();
+    for (ep, result) in upstream_results {
+        match result {
+            Ok(resp) => {
+                if let Some(v1::submit_fast_pay_response::Result::Cert(cert)) = resp.result {
+                    let domain_cert = parse_ed25519_proto_cert(cert.clone())
+                        .map_err(|e| format!("parse cert from {}: {e}", ep.name))?;
+                    cert_mgr
+                        .collect_certificate(built.tx_hash, built.effects_hash, domain_cert)
+                        .map_err(|e| format!("collect cert: {e}"))?;
+                    proto_certs.push(cert);
+                }
+            }
+            Err(err) => {
+                warn!(endpoint = ep.name.as_str(), error = %err, "demo submit failed");
+            }
+        }
+    }
+
+    if proto_certs.len() < 2 {
+        return Err(format!(
+            "not enough certs: got {}, need 2",
+            proto_certs.len()
+        ));
+    }
+
+    let qc = cert_mgr
+        .assemble_qc(built.tx_hash, built.effects_hash)
+        .map_err(|e| format!("assemble QC: {e}"))?;
+
+    let proto_qc = v1::QuorumCertificate {
+        tx_hash: built.tx_hash.as_bytes().to_vec(),
+        effects_hash: built.effects_hash.as_bytes().to_vec(),
+        certs: proto_certs,
+        threshold: qc.threshold(),
+        qc_hash: qc.qc_hash().as_bytes().to_vec(),
+    };
+
+    Ok((qc, proto_qc))
+}
+
+async fn demo_chained_flow(State(app): State<Arc<AppState>>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, std::convert::Infallible>>(32);
+
+    let upstream = app.upstream.clone();
+    let chain_id = app.chain_id;
+
+    tokio::spawn(async move {
+        let start = Instant::now();
+
+        macro_rules! send_event {
+            ($event_type:expr, $data:expr) => {
+                if tx
+                    .send(Ok(Event::default()
+                        .event($event_type)
+                        .json_data($data)
+                        .expect("serialize")))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            };
+        }
+
+        macro_rules! send_error {
+            ($msg:expr) => {
+                let _ = tx
+                    .send(Ok(Event::default()
+                        .event("error")
+                        .json_data(DemoErrorEvent {
+                            message: $msg.to_string(),
+                        })
+                        .expect("serialize")))
+                    .await;
+                return;
+            };
+        }
+
+        // Build verification context via direct tonic calls (Send-compatible)
+        let verify_ctx = match build_demo_verify_ctx(&upstream.endpoints, chain_id, 1).await {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                send_error!(format!("failed to build verification context: {e}"));
+            }
+        };
+
+        // Random nonce key per invocation to avoid contention on repeated runs
+        let nonce_key = NonceKey::new(rand::random::<[u8; 32]>());
+
+        let scenario = DemoScenario::new(chain_id, 1);
+        let accounts = scenario.accounts;
+        let keys = scenario.account_keys;
+
+        let mut cert_mgr =
+            CertManager::<Ed25519Certificate, MultiCertQC, SimpleAssembler>::new(verify_ctx, 2);
+
+        // Grab initial chain head
+        let chain_heads = fanout_get_chain_head(&upstream).await;
+        let start_block_height = chain_heads
+            .into_iter()
+            .filter_map(|(_, r)| r.ok())
+            .map(|h| h.block_height)
+            .max()
+            .unwrap_or(0);
+
+        // Step 1: Alice submit started
+        send_event!(
+            "step",
+            DemoStepEvent {
+                step: "alice_submit_started",
+                label: "Alice -> Bob",
+                description: "Alice sending $10 to Bob",
+                tx_hash: None,
+                qc_hash: None,
+                parent_qc_hash: None,
+                cert_count: None,
+                timestamp_ms: elapsed_ms(&start),
+            }
+        );
+
+        // Execute Alice -> Bob
+        let (qc1, proto_qc1) = match demo_send_payment(
+            &upstream,
+            &mut cert_mgr,
+            chain_id,
+            accounts.alice,
+            keys.alice,
+            accounts.bob,
+            10,
+            accounts.asset,
+            nonce_key,
+            0,
+            Expiry::MaxBlockHeight(100),
+            None,
+            None,
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(e) => {
+                send_error!(format!("Alice->Bob payment failed: {e}"));
+            }
+        };
+
+        // Step 2: Alice QC formed
+        send_event!(
+            "step",
+            DemoStepEvent {
+                step: "alice_qc_formed",
+                label: "QC1 Formed",
+                description: "Quorum certificate for Alice->Bob assembled",
+                tx_hash: Some(format!("0x{}", hex::encode(qc1.tx_hash().as_bytes()))),
+                qc_hash: Some(format!("0x{}", hex::encode(qc1.qc_hash().as_bytes()))),
+                parent_qc_hash: None,
+                cert_count: Some(qc1.threshold()),
+                timestamp_ms: elapsed_ms(&start),
+            }
+        );
+
+        // Step 3: Bob imports QC1
+        send_event!(
+            "step",
+            DemoStepEvent {
+                step: "bob_import_qc",
+                label: "Bob Imports QC1",
+                description: "Bob imports QC1 as parent for chained spend",
+                tx_hash: None,
+                qc_hash: None,
+                parent_qc_hash: Some(format!("0x{}", hex::encode(qc1.qc_hash().as_bytes()))),
+                cert_count: None,
+                timestamp_ms: elapsed_ms(&start),
+            }
+        );
+
+        // Step 4: Bob submit started
+        send_event!(
+            "step",
+            DemoStepEvent {
+                step: "bob_submit_started",
+                label: "Bob -> Carol",
+                description: "Bob sending $10 to Carol with parent QC",
+                tx_hash: None,
+                qc_hash: None,
+                parent_qc_hash: Some(format!("0x{}", hex::encode(qc1.qc_hash().as_bytes()))),
+                cert_count: None,
+                timestamp_ms: elapsed_ms(&start),
+            }
+        );
+
+        // Execute Bob -> Carol with parent QC
+        let (qc2, _proto_qc2) = match demo_send_payment(
+            &upstream,
+            &mut cert_mgr,
+            chain_id,
+            accounts.bob,
+            keys.bob,
+            accounts.carol,
+            10,
+            accounts.asset,
+            nonce_key,
+            0,
+            Expiry::MaxBlockHeight(100),
+            Some(&qc1),
+            Some(proto_qc1),
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(e) => {
+                send_error!(format!("Bob->Carol payment failed: {e}"));
+            }
+        };
+
+        // Step 5: Bob QC formed
+        send_event!(
+            "step",
+            DemoStepEvent {
+                step: "bob_qc_formed",
+                label: "QC2 Formed",
+                description: "Quorum certificate for Bob->Carol assembled",
+                tx_hash: Some(format!("0x{}", hex::encode(qc2.tx_hash().as_bytes()))),
+                qc_hash: Some(format!("0x{}", hex::encode(qc2.qc_hash().as_bytes()))),
+                parent_qc_hash: Some(format!("0x{}", hex::encode(qc1.qc_hash().as_bytes()))),
+                cert_count: Some(qc2.threshold()),
+                timestamp_ms: elapsed_ms(&start),
+            }
+        );
+
+        // Step 6: Chain head
+        let chain_heads = fanout_get_chain_head(&upstream).await;
+        if let Some(head) = chain_heads.into_iter().filter_map(|(_, r)| r.ok()).next() {
+            send_event!(
+                "chain_head",
+                DemoChainHeadEvent {
+                    block_height: head.block_height,
+                    block_hash: format!("0x{}", hex::encode(&head.block_hash)),
+                    unix_millis: head.unix_millis,
+                }
+            );
+        }
+
+        // Step 7: Done
+        send_event!(
+            "done",
+            DemoDoneEvent {
+                success: true,
+                total_ms: elapsed_ms(&start),
+                start_block_height,
+            }
+        );
+    });
+
+    Sse::new(ReceiverStream::new(rx))
+        .keep_alive(KeepAlive::default())
+        .into_response()
 }
 
 // ---------------------------------------------------------------------------
