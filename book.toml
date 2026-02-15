@@ -8,7 +8,7 @@ src = "docs"
 build-dir = "docs/book"
 
 [output.html]
-preferred-dark-theme = "rust"
+default-theme = "light"
 additional-js = ["mermaid.min.js", "mermaid-init.js"]
 mathjax-support = true
 
