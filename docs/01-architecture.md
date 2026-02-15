@@ -9,8 +9,9 @@ The system consists of four main component layers. User clients construct and su
 ```mermaid
 flowchart TB
     subgraph Clients["User Clients"]
-        Native["Native Rust"]
-        WASM["WASM Browser"]
+        Alice
+        Bob
+        Carol
     end
 
     subgraph Validators["Validator Sidecars"]
