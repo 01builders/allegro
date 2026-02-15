@@ -2,9 +2,9 @@
 
 ## What problem does Allegro solve?
 
-Blockchain finality takes seconds. This latency is acceptable for large-value transfers but unsuitable for retail payments where sub-second confirmation is expected.
+Blockchain finality requires waiting for validators to come to consensus. This latency is acceptable for large-value transfers but unsuitable for retail payments where sub-second confirmation is the expected user experience.
 
-Users cannot spend received funds until the sending transaction is finalized. A recipient who wants to immediately forward funds to a third party must wait for the first payment to settle. This creates friction that makes blockchain payments impractical for everyday commerce.
+This matters for commercial applications that process high volumes of payments. A payment processor receiving funds cannot forward them until finality. Capital sits idle during each confirmation window. Businesses that chain transactions together see latency compound and working capital requirements grow.
 
 ## How does Allegro solve this problem?
 
