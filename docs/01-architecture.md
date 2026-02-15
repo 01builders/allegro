@@ -91,4 +91,4 @@ See [User Client](02-user-client.md) for the Rust client library.
 
 See [Tempo Integration](05-tempo-integration.md) for blockchain-specific details.
 
-See [Demo Scenario](07-demo.md) for the end-to-end demonstration.
+See [Demo Scenario](06-demo.md) for the end-to-end demonstration.

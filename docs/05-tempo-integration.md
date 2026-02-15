@@ -139,4 +139,4 @@ See [System Architecture](01-architecture.md) for the overall FastPay design.
 
 See [Validator Sidecar](04-sidecar.md) for certificate issuance.
 
-See [Demo Scenario](07-demo.md) for the end-to-end demonstration.
+See [Demo Scenario](06-demo.md) for the end-to-end demonstration.

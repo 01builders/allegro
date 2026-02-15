@@ -56,7 +56,39 @@ Polls all sidecars and returns the highest observed block height. Uses this to p
 
 The backend exposes HTTP endpoints for web client integration.
 
+### Encoding Conventions
+
+The REST API follows these encoding rules for frontend compatibility.
+
+| Type | Encoding |
+|------|----------|
+| Bytes | Hex string with `0x` prefix |
+| uint64 | Decimal string for precision |
+| Stage | One of `ACCEPTED`, `CERTIFIED`, `QUEUED_ONCHAIN`, `INCLUDED`, `FINALIZED` |
+
+The `client_request_id` field enables idempotent request handling. Duplicate requests with the same ID return the cached response.
+
 ### Submit Payment
+
+Two endpoints accept payment submissions.
+
+The high-level endpoint constructs the transaction from payment parameters.
+
+```
+POST /api/v1/submit-payment
+Content-Type: application/json
+
+{
+  "sender": "0x1111111111111111111111111111111111111111",
+  "recipient": "0x2222222222222222222222222222222222222222",
+  "amount": 1,
+  "asset": "0x0000000000000000000000000000000000000000",
+  "expiry_unix_millis": 1739200000000,
+  "client_request_id": "6f8ce0d2-5602-4fe6-8d26-0c41efe4a9e9"
+}
+```
+
+The low-level endpoint accepts a pre-signed Tempo transaction.
 
 ```
 POST /api/v1/submit-raw-tx
@@ -72,7 +104,25 @@ Content-Type: application/json
 }
 ```
 
-Accepts a raw signed Tempo transaction. Constructs the `FastPayTx` protobuf and fans out to sidecars. Returns certificates on success or an error response.
+Both endpoints fan out to sidecars and return the transaction hash with initial stage.
+
+```json
+{
+  "tx_hash": "0x...",
+  "stage": "ACCEPTED"
+}
+```
+
+Rejected transactions return an error response.
+
+```json
+{
+  "reject": {
+    "code": "INSUFFICIENT_FUNDS",
+    "message": "balance check failed"
+  }
+}
+```
 
 ### Chain Head
 
@@ -84,13 +134,13 @@ Returns the current chain state from the highest responding sidecar.
 
 ```json
 {
-  "block_height": 12345,
+  "block_height": "12345",
   "block_hash": "0x...",
-  "timestamp_unix_millis": 1700000000000
+  "unix_millis": "1700000000000"
 }
 ```
 
-This endpoint provides chain state for clients to check expiry conditions.
+This endpoint provides chain state for clients to check expiry conditions. The `block_height` and `unix_millis` fields use decimal strings for uint64 precision.
 
 ### Transaction Status
 
@@ -103,14 +153,14 @@ Returns the certificate count and lifecycle stage for a transaction.
 ```json
 {
   "tx_hash": "0x...",
-  "cert_count": 2,
-  "threshold": 2,
   "stage": "CERTIFIED",
-  "certificates": [...]
+  "cert_count": 2,
+  "qc_formed": true,
+  "qc_hash": "0x..."
 }
 ```
 
-Clients poll this endpoint to track payment progress.
+The `qc_formed` field indicates whether threshold certificates have been collected. When true, `qc_hash` contains the hash of the assembled Quorum Certificate. Clients poll this endpoint to track payment progress.
 
 ## State Management
 
@@ -170,4 +220,4 @@ See [System Architecture](01-architecture.md) for the overall system design.
 
 See [Validator Sidecar](04-sidecar.md) for the upstream gRPC services.
 
-See [REST API Contract](06-web-rest-contract.md) for detailed endpoint specifications.
+See [Demo Scenario](06-demo.md) for the end-to-end payment flow.
