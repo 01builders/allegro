@@ -1,4 +1,8 @@
-# Allegro FastPay (Tempo Hackathon)
+# Allegro
+
+Blockchain finality takes seconds, which creates latency problems for retail payments and commercial applications that process high volumes. Allegro solves this with a decentralized private mempool run as a sidecar to each Tempo validator. When a user submits a payment, validators sign certificates and return them as callbacks. Once the user collects certificates from 2f+1 validators, they form a Quorum Certificate proving the payment will settle. Recipients can spend funds immediately by presenting the QC, enabling chained payments that complete with cryptographic guarantees before settling on-chain.
+
+## Demo
 
 Short guide for running the demo flows.
 
