@@ -6,7 +6,7 @@ use std::time::Duration;
 use fastpay_backend::service::FastPayBackendService;
 use fastpay_backend::state::{BackendLimits, FastPayBackendState};
 use fastpay_backend::upstream::{SidecarEndpoint, UpstreamConfig};
-use fastpay_crypto::{compute_qc_hash, Ed25519Signer};
+use fastpay_crypto::{compute_qc_hash, Ed25519Signer, SimpleAssembler};
 use fastpay_proto::v1;
 use fastpay_proto::v1::fast_pay_aggregator_client::FastPayAggregatorClient;
 use fastpay_proto::v1::fast_pay_aggregator_server::FastPayAggregatorServer;
@@ -14,7 +14,10 @@ use fastpay_proto::v1::fast_pay_sidecar_server::FastPaySidecarServer;
 use fastpay_sidecar::service::FastPaySidecarService;
 use fastpay_sidecar::state::SidecarState;
 use fastpay_sidecar_mock::DemoScenario;
-use fastpay_types::{Address, AssetId, CertSigningContext, Expiry, NonceKey, TxHash, ValidatorId};
+use fastpay_types::{
+    Address, AssetId, CertSigningContext, Certificate, EffectsHash, Expiry, NonceKey,
+    QuorumAssembler, QuorumCert, TxHash, ValidatorId, VerificationContext,
+};
 use fastpay_user_client::{
     parse_ed25519_proto_cert, GrpcTransport, RequestMeta, RetryPolicy, SidecarTransport, TxBuilder,
 };
@@ -132,6 +135,23 @@ fn request_meta(client_request_id: &str) -> RequestMeta {
             max_backoff_ms: 0,
             jitter_ms: 0,
         },
+    }
+}
+
+fn build_verify_ctx_from_seeds() -> VerificationContext {
+    let dave_id = ValidatorId::new([0xd1; 32]);
+    let edgar_id = ValidatorId::new([0xe1; 32]);
+    let dave_signer = Ed25519Signer::from_seed(dave_id, [0x41; 32]);
+    let edgar_signer = Ed25519Signer::from_seed(edgar_id, [0x42; 32]);
+    let mut committee = HashMap::new();
+    committee.insert(dave_id, dave_signer.public_key_bytes());
+    committee.insert(edgar_id, edgar_signer.public_key_bytes());
+    VerificationContext {
+        chain_id: CHAIN_ID,
+        domain_tag: "tempo.fastpay.cert.v1".to_string(),
+        protocol_version: 1,
+        epoch: EPOCH,
+        committee,
     }
 }
 
@@ -440,4 +460,196 @@ async fn aggregator_tx_status_is_conservative_and_reports_qc() {
     );
     assert!(after.qc_formed);
     assert_eq!(after.certs.len(), 2);
+}
+
+#[tokio::test]
+async fn backend_submit_verifies_signatures_and_assembles_qc() {
+    let dave = start_sidecar(
+        "Dave",
+        ValidatorId::new([0xd1; 32]),
+        [0x41; 32],
+        1,
+        [0x01; 32],
+    )
+    .await;
+    let edgar = start_sidecar(
+        "Edgar",
+        ValidatorId::new([0xe1; 32]),
+        [0x42; 32],
+        1,
+        [0x02; 32],
+    )
+    .await;
+
+    let dave_url = format!("http://{}", dave.addr);
+    let edgar_url = format!("http://{}", edgar.addr);
+    let backend_addr = start_aggregator(&[dave_url, edgar_url], 2).await;
+    let mut client = FastPayAggregatorClient::connect(format!("http://{}", backend_addr))
+        .await
+        .unwrap();
+
+    let scenario = DemoScenario::new(CHAIN_ID, EPOCH);
+    let response = client
+        .submit_fast_pay(build_submit_request(
+            "verify-sigs",
+            scenario.accounts.bob,
+            0,
+        ))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(response.threshold_met);
+    assert_eq!(response.certs.len(), 2);
+
+    // Parse proto certs into domain objects.
+    let domain_certs: Vec<_> = response
+        .certs
+        .into_iter()
+        .map(parse_ed25519_proto_cert)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+
+    // Cryptographically verify each certificate against the committee.
+    let verify_ctx = build_verify_ctx_from_seeds();
+    let dave_id = ValidatorId::new([0xd1; 32]);
+    let edgar_id = ValidatorId::new([0xe1; 32]);
+    let mut seen_signers = std::collections::HashSet::new();
+    for cert in &domain_certs {
+        cert.verify(&verify_ctx).unwrap();
+        seen_signers.insert(*cert.signer());
+    }
+    assert!(seen_signers.contains(&dave_id));
+    assert!(seen_signers.contains(&edgar_id));
+
+    // Assemble QC and verify it.
+    let tx_hash = TxHash::from_slice(&response.tx_hash).unwrap();
+    let effects_hash = EffectsHash::from_slice(&response.effects_hash).unwrap();
+    let mut assembler = SimpleAssembler::new(tx_hash, effects_hash, 2);
+    for cert in domain_certs {
+        assembler.add_certificate(cert).unwrap();
+    }
+    assert!(assembler.is_complete());
+    let qc = assembler.finalize().unwrap();
+    qc.verify(&verify_ctx).unwrap();
+    assert_eq!(qc.threshold(), 2);
+    assert_eq!(qc.cert_count(), 2);
+}
+
+#[tokio::test]
+async fn backend_chained_payment_with_verified_qc() {
+    let dave = start_sidecar(
+        "Dave",
+        ValidatorId::new([0xd1; 32]),
+        [0x41; 32],
+        1,
+        [0x01; 32],
+    )
+    .await;
+    let edgar = start_sidecar(
+        "Edgar",
+        ValidatorId::new([0xe1; 32]),
+        [0x42; 32],
+        1,
+        [0x02; 32],
+    )
+    .await;
+
+    let dave_url = format!("http://{}", dave.addr);
+    let edgar_url = format!("http://{}", edgar.addr);
+    let backend_addr = start_aggregator(&[dave_url, edgar_url], 2).await;
+    let mut client = FastPayAggregatorClient::connect(format!("http://{}", backend_addr))
+        .await
+        .unwrap();
+
+    let scenario = DemoScenario::new(CHAIN_ID, EPOCH);
+    let verify_ctx = build_verify_ctx_from_seeds();
+
+    // Step 1: Alice -> Bob (10 units) via aggregator.
+    let resp1 = client
+        .submit_fast_pay(build_submit_request(
+            "chain-step1",
+            scenario.accounts.bob,
+            0,
+        ))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(resp1.threshold_met);
+    assert_eq!(resp1.certs.len(), 2);
+
+    // Parse, verify, and assemble QC1.
+    let certs1: Vec<_> = resp1
+        .certs
+        .iter()
+        .cloned()
+        .map(parse_ed25519_proto_cert)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    for cert in &certs1 {
+        cert.verify(&verify_ctx).unwrap();
+    }
+
+    let tx_hash1 = TxHash::from_slice(&resp1.tx_hash).unwrap();
+    let effects_hash1 = EffectsHash::from_slice(&resp1.effects_hash).unwrap();
+    let mut asm1 = SimpleAssembler::new(tx_hash1, effects_hash1, 2);
+    for cert in certs1 {
+        asm1.add_certificate(cert).unwrap();
+    }
+    let qc1 = asm1.finalize().unwrap();
+    qc1.verify(&verify_ctx).unwrap();
+
+    // Step 2: Bob -> Carol (10 units) with parent QC from step 1.
+    // Bob has 5 initial + 10 from Alice's QC = 15 effective balance.
+    let proto_qc1 = fastpay_user_client::client::build_proto_qc_from_domain(&qc1);
+    let built_bob = TxBuilder::new(CHAIN_ID)
+        .with_payment(
+            scenario.accounts.bob,
+            scenario.accounts.carol,
+            10,
+            scenario.accounts.asset,
+        )
+        .with_sender_private_key(scenario.account_keys.bob)
+        .with_nonce_seq(NonceKey::new([0x5c; 32]), 0)
+        .with_expiry(Expiry::MaxBlockHeight(100))
+        .with_parent_qc(&qc1)
+        .with_client_request_id("chain-step2")
+        .build()
+        .unwrap();
+
+    let resp2 = client
+        .submit_fast_pay(v1::SubmitFastPayRequest {
+            tx: Some(built_bob.tx),
+            parent_qcs: vec![proto_qc1],
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(resp2.threshold_met);
+    assert_eq!(resp2.certs.len(), 2);
+
+    // Parse, verify, and assemble QC2.
+    let certs2: Vec<_> = resp2
+        .certs
+        .into_iter()
+        .map(parse_ed25519_proto_cert)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    for cert in &certs2 {
+        cert.verify(&verify_ctx).unwrap();
+    }
+
+    let tx_hash2 = TxHash::from_slice(&resp2.tx_hash).unwrap();
+    let effects_hash2 = EffectsHash::from_slice(&resp2.effects_hash).unwrap();
+    let mut asm2 = SimpleAssembler::new(tx_hash2, effects_hash2, 2);
+    for cert in certs2 {
+        asm2.add_certificate(cert).unwrap();
+    }
+    let qc2 = asm2.finalize().unwrap();
+    qc2.verify(&verify_ctx).unwrap();
+
+    // QC1 and QC2 must have different hashes (different transactions).
+    assert_ne!(qc1.qc_hash(), qc2.qc_hash());
 }
