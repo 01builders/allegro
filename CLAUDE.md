@@ -37,9 +37,9 @@ WASM compilation check: `cargo check --target wasm32-unknown-unknown`
 
 ## Architecture
 
-See `docs/user_client_phase1.md` for the Phase 1 user client implementation plan.
+See `docs/architecture.md` for system design and component overview.
 
-**Planned crate structure:**
+**Crate structure:**
 - `fastpay-types` — Core traits (`Certificate`, `QuorumCert`, `QuorumAssembler`, `Signer`) and ID types
 - `fastpay-crypto` — ed25519 implementations of traits
 - `fastpay-proto` — Generated protobuf types from `proto/`
