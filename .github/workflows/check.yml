@@ -8,7 +8,7 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
       - name: Install toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
       - name: Install protoc
@@ -16,25 +16,13 @@ jobs:
         with:
           version: "25.x"
       - name: Check formatting
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo fmt --all -- --check
       - name: Build sources
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --workspace --all-targets --all-features
+        run: cargo build --workspace --all-targets --all-features
       - name: Run linter
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: Run tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace --all-targets --all-features
+        run: cargo test --workspace --all-targets --all-features
 
   docs:
     name: Documentation
