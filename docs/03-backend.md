@@ -1,6 +1,6 @@
-# Aggregator Backend
+# Backend
 
-The aggregator backend is a third-party service that fans out requests to multiple validator sidecars. It collects certificates, assembles Quorum Certificates, and exposes a REST API for web clients.
+The backend is a third-party service that fans out requests to multiple validator sidecars. It collects certificates, assembles Quorum Certificates, and exposes a REST API for web clients.
 
 ## Purpose
 
