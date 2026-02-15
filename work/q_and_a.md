@@ -8,6 +8,6 @@ This is also important for commercial applications that process large payment vo
 
 ## How does Allegro solve this problem?
 
-Allegro is a decentralized private mempool, run as a Tempo validator sidecar. When a user submits a payment, validators sign certificates attesting to the transaction. Once 2f+1 validators out of 3f+1 have signed, the certificates form a Quorum Certificate that proves the payment will settle.
+Allegro is a decentralized private mempool, run as a Tempo validator sidecar. When a user submits a payment, validators sign certificates attesting to the transaction and send them back as callbacks. Once the user has collected certificates from 2f+1 validators out of 3f+1, they can construct a Quorum Certificate that proves the payment will settle.
 
 Recipients can spend funds immediately by presenting the QC as proof of incoming payment. This enables chained payments where Alice pays Bob and Bob pays Carol within a single block interval. Both payments complete with cryptographic guarantees before either settles on-chain.
