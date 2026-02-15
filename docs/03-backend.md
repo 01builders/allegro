@@ -68,27 +68,7 @@ The REST API follows these encoding rules for frontend compatibility.
 
 The `client_request_id` field enables idempotent request handling. Duplicate requests with the same ID return the cached response.
 
-### Submit Payment
-
-Two endpoints accept payment submissions.
-
-The high-level endpoint constructs the transaction from payment parameters.
-
-```
-POST /api/v1/submit-payment
-Content-Type: application/json
-
-{
-  "sender": "0x1111111111111111111111111111111111111111",
-  "recipient": "0x2222222222222222222222222222222222222222",
-  "amount": 1,
-  "asset": "0x0000000000000000000000000000000000000000",
-  "expiry_unix_millis": 1739200000000,
-  "client_request_id": "6f8ce0d2-5602-4fe6-8d26-0c41efe4a9e9"
-}
-```
-
-The low-level endpoint accepts a pre-signed Tempo transaction.
+### Submit Raw Transaction
 
 ```
 POST /api/v1/submit-raw-tx
@@ -104,12 +84,14 @@ Content-Type: application/json
 }
 ```
 
-Both endpoints fan out to sidecars and return the transaction hash with initial stage.
+Accepts a pre-signed Tempo transaction. Fans out to sidecars and returns the transaction hash with certificate status.
 
 ```json
 {
   "tx_hash": "0x...",
-  "stage": "ACCEPTED"
+  "stage": "ACCEPTED",
+  "cert_count": 0,
+  "qc_formed": false
 }
 ```
 

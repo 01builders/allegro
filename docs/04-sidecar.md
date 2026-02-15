@@ -89,18 +89,21 @@ If all checks pass, the sidecar signs a certificate.
 The validator signs a typed message binding the certificate to the transaction and its effects.
 
 ```
-cert_message = hash(domain || tx_hash || effects_hash || sender || nonce_key || nonce_seq || expiry)
+preimage = CERT_PREIMAGE_TAG || domain_tag || protocol_version || chain_id || epoch || tx_hash || effects_hash
+cert_message = sha256(preimage)
 ```
 
-The `domain` field binds the signature to FastPay and the specific chain. It prevents cross-chain replay by including `chain_id`. The `effects_hash` commits to the state transition the validator claims will occur.
+The `CERT_PREIMAGE_TAG` is the string `"tempo.fastpay.cert.preimage.v1"`. The `domain_tag` identifies the FastPay protocol version. The `chain_id` and `epoch` prevent cross-chain and cross-epoch replay.
+
+The sender, nonce_key, nonce_seq, and expiry are committed indirectly through the `tx_hash` and `effects_hash` computations rather than directly in the certificate preimage.
 
 The certificate includes the `tx_hash`, `effects_hash`, validator identity, and Ed25519 signature over the cert message.
 
 ## Replay Protection
 
-The certificate message includes `chain_id` and `expiry` to prevent replay attacks. The `chain_id` in the domain field ensures certificates cannot be replayed across different networks. The `expiry` field ensures certificates become invalid after a block height or timestamp threshold.
+The certificate preimage includes `chain_id` and `epoch` to prevent replay attacks. The `chain_id` ensures certificates cannot be replayed across different networks. The `epoch` binds certificates to a specific validator set.
 
-Sidecars reject transactions with expired timestamps or block heights. This bounds the window during which a certificate remains valid.
+The `expiry` field in the transaction prevents indefinite replay. Sidecars reject transactions with expired timestamps or block heights. This bounds the window during which a certificate remains valid.
 
 ## Gossip Protocol
 

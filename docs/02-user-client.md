@@ -93,7 +93,7 @@ The `CertManager` validates and stores certificates from validators.
 
 ```rust
 let cert_manager = CertManager::<_, _, SimpleAssembler>::new(verify_ctx, threshold);
-cert_manager.collect_certificate(cert)?;
+cert_manager.collect_certificate(tx_hash, effects_hash, cert)?;
 let qc = cert_manager.assemble_qc(tx_hash, effects_hash)?;
 ```
 
@@ -122,7 +122,7 @@ The `WalletState` struct manages nonces, balances, and pending transactions.
 ```rust
 let mut wallet = WalletState::<MultiCertQC>::new(address, CacheLimits::default());
 let seq = wallet.reserve_next_nonce(nonce_key);
-wallet.record_pending_tx(pending);
+wallet.add_pending_tx(pending);
 wallet.record_qc(qc);
 ```
 

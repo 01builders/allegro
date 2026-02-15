@@ -78,6 +78,7 @@ This enables instant chained payments without waiting for on-chain confirmation.
 | `fastpay-sidecar` | Validator gRPC service |
 | `fastpay-sidecar-mock` | In-memory mock for testing |
 | `fastpay-backend` | Aggregator with REST API |
+| `demo` | End-to-end demo binary |
 
 The crates form a layered dependency structure. `fastpay-types` sits at the bottom with no internal dependencies. `fastpay-crypto` implements the traits from `fastpay-types`. `fastpay-proto` generates wire types from protobuf definitions. Higher-level crates depend on these foundations.
 
