@@ -2,6 +2,18 @@
 
 Blockchain finality requires waiting for validators to come to consensus. This latency is unsuitable for retail payments where sub-second confirmation is the expected user experience. Allegro is a decentralized private mempool, run as a Tempo validator sidecar. When a user submits a payment, validators sign certificates attesting to the transaction and send them back as callbacks. Once the user has collected certificates from 2f+1 validators out of 3f+1, they can construct a Quorum Certificate that proves the payment will settle. Recipients can spend funds immediately by presenting the QC as proof of incoming payment, enabling chained payments that complete with cryptographic guarantees before either settles on-chain.
 
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Background](https://01builders.github.io/allegro/00-background.html) | Problem statement and protocol foundations |
+| [System Architecture](https://01builders.github.io/allegro/01-architecture.html) | Component overview and payment flow |
+| [User Client](https://01builders.github.io/allegro/02-user-client.html) | Rust client library for wallet interactions |
+| [Backend](https://01builders.github.io/allegro/03-backend.html) | Aggregator service and REST API |
+| [Validator Sidecar](https://01builders.github.io/allegro/04-sidecar.html) | Certificate issuance and validation |
+| [Tempo Integration](https://01builders.github.io/allegro/05-tempo-integration.html) | 2D nonces, sub-blocks, and TIP-20 |
+| [Demo Scenario](https://01builders.github.io/allegro/06-demo.html) | End-to-end chained payment demonstration |
+
 ## Demo
 
 Short guide for running the demo flows.
