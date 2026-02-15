@@ -28,6 +28,9 @@ option go_package = "tempo/fastpay/v1;fastpayv1";
 // =============================================================================
 
 service FastPayAggregator {
+  // Submit a transaction through the backend and fan out to validator sidecars.
+  rpc SubmitFastPay(SubmitFastPayRequest) returns (SubmitFastPayFanoutResponse);
+
   // Unified bulletin board (mirrors validator sidecars).
   rpc GetBulletinBoard(GetBulletinBoardRequest) returns (GetBulletinBoardResponse);
 
@@ -39,6 +42,19 @@ service FastPayAggregator {
 
   // Transaction status for UI.
   rpc GetTxStatus(GetTxStatusRequest) returns (GetTxStatusResponse);
+}
+
+message ValidatorReject {
+  ValidatorId validator = 1;
+  RejectReason reject = 2;
+}
+
+message SubmitFastPayFanoutResponse {
+  bytes tx_hash = 1;
+  bytes effects_hash = 2;
+  repeated ValidatorCertificate certs = 3;
+  repeated ValidatorReject rejects = 4;
+  bool threshold_met = 5;
 }
 
 // -----------------------------

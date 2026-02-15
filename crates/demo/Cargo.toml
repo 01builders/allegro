@@ -13,3 +13,4 @@ fastpay-user-client = { path = "../fastpay-user-client" }
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+clap = { version = "4", features = ["derive"] }
