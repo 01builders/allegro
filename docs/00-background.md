@@ -6,7 +6,7 @@ This document describes the problem that the original FastPay solves, the distri
 
 Blockchain-based settlement systems face a fundamental latency problem. Traditional consensus protocols require multiple rounds of communication to establish a total ordering of transactions. Even optimized BFT protocols achieve finality in seconds. This latency is acceptable for large-value transfers but unsuitable for point-of-sale retail payments.
 
-The core idea is that payment transactions have special semantics. Payments are commutative. Crediting an account with $10 then $20 produces the same result as crediting $20 then $10. This property enables a weaker primitive that provides safety without total ordering.
+The core idea is that payment transactions have special semantics. Payments are commutative. Crediting an account with 10 USD then 20 USD produces the same result as crediting 20 USD then 10 USD. This property enables a weaker primitive that provides safety without total ordering.
 
 ## Byzantine Consistent Broadcast
 
@@ -76,7 +76,7 @@ Allegro restricts transactions to TIP-20 payment tokens. These are addresses pre
 
 Allegro supports chained spending where a recipient spends received funds immediately. The recipient includes the parent Quorum Certificate hash in their transaction. Validators credit the recipient with the incoming amount before validating their outgoing payment.
 
-Alice pays Bob $10 and obtains QC1. Bob presents QC1 as `parent_qc_hash` in his payment to Carol. Validators credit Bob with $10 from QC1 before validating his payment. Bob pays Carol $10 and obtains QC2. Both payments complete before either settles on-chain.
+Alice pays Bob 10 USD and obtains QC1. Bob presents QC1 as `parent_qc_hash` in his payment to Carol. Validators credit Bob with 10 USD from QC1 before validating his payment. Bob pays Carol 10 USD and obtains QC2. Both payments complete before either settles on-chain.
 
 ## Quorum Certificate Threshold
 
