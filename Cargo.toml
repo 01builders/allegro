@@ -42,6 +42,10 @@ alloy-eips = "1.0.38"
 alloy-primitives = "1.4.1"
 alloy-signer = "1.6.3"
 alloy-signer-local = "1.6.3"
+alloy-provider = { version = "1.6.3", features = ["ws"] }
+alloy-transport-ws = "1.6.3"
+alloy-rpc-types-eth = "1.6.3"
+alloy-pubsub = "1.6.3"
 
 [package]
 name = "tempo-hackathon"

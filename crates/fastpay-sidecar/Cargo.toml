@@ -20,6 +20,10 @@ serde = { workspace = true, features = ["derive"] }
 alloy-consensus.workspace = true
 alloy-eips.workspace = true
 alloy-primitives.workspace = true
+alloy-provider = { workspace = true, features = ["ws"] }
+alloy-transport-ws.workspace = true
+alloy-rpc-types-eth.workspace = true
+alloy-pubsub.workspace = true
 tokio.workspace = true
 tokio-stream = "0.1"
 tonic.workspace = true

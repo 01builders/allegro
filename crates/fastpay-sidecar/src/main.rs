@@ -16,6 +16,7 @@ use tonic::transport::Server;
 use tracing::info;
 
 use fastpay_sidecar::gossip::{run_gossip_loop, GossipConfig};
+use fastpay_sidecar::reth::{run_block_subscription, run_tx_submission_loop, RethConfig};
 use fastpay_sidecar::service::FastPaySidecarService;
 use fastpay_sidecar::state::{SidecarLimits, SidecarState};
 
@@ -82,6 +83,18 @@ struct Cli {
     /// Maximum certificates returned per GetBulletinBoard response.
     #[arg(long, default_value = "1000")]
     max_bulletin_board_response: u32,
+
+    /// RETH node WebSocket URL (e.g., ws://127.0.0.1:8546). Enables RETH integration.
+    #[arg(long)]
+    reth_ws_url: Option<String>,
+
+    /// Maximum pending EVM transactions tracked for on-chain confirmation.
+    #[arg(long, default_value = "4096")]
+    max_pending_evm_txs: usize,
+
+    /// Maximum EVM tx receipts to check per block.
+    #[arg(long, default_value = "64")]
+    max_receipt_batch: usize,
 }
 
 fn parse_hex_32(s: &str) -> Result<[u8; 32], String> {
@@ -147,9 +160,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         max_known_qcs: cli.max_known_qcs,
         max_request_cache: cli.max_request_cache,
         max_bulletin_board_response: cli.max_bulletin_board_response,
+        max_pending_evm_txs: cli.max_pending_evm_txs,
     });
 
-    let service = FastPaySidecarService::new(Arc::clone(&state));
+    // Optionally spawn RETH integration tasks.
+    let reth_tx_sender = if let Some(ref ws_url) = cli.reth_ws_url {
+        let config = RethConfig::new(
+            ws_url.clone(),
+            cli.max_pending_evm_txs,
+            cli.max_receipt_batch,
+        );
+        let (tx_sender, tx_receiver) = tokio::sync::mpsc::channel(256);
+
+        tokio::spawn(run_block_subscription(Arc::clone(&state), config.clone()));
+        tokio::spawn(run_tx_submission_loop(
+            Arc::clone(&state),
+            config,
+            tx_receiver,
+        ));
+
+        info!(reth_ws_url = ws_url.as_str(), "RETH integration enabled");
+        Some(tx_sender)
+    } else {
+        info!("RETH integration disabled (no --reth-ws-url)");
+        None
+    };
+
+    let service = FastPaySidecarService::new(Arc::clone(&state), reth_tx_sender);
 
     // Start gossip loop.
     let gossip_config = GossipConfig {

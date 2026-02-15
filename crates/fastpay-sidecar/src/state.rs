@@ -44,12 +44,28 @@ const TIP20_PAYMENT_PREFIX: [u8; 12] = [0x20, 0xc0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 // Inner (mutable state behind RwLock)
 // ---------------------------------------------------------------------------
 
+/// A pending EVM transaction awaiting on-chain confirmation.
+#[derive(Debug, Clone)]
+pub struct PendingEvmTx {
+    pub evm_tx_hash: [u8; 32],
+    pub fastpay_tx_hash: TxHash,
+    pub sender: Address,
+    pub recipient: Address,
+    pub amount: u64,
+    pub asset: AssetId,
+    pub nonce_key: NonceKey,
+    pub nonce_seq: u64,
+    pub raw_tx: Vec<u8>,
+    pub submitted_at_block: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct SidecarLimits {
     pub max_total_certs: usize,
     pub max_known_qcs: usize,
     pub max_request_cache: usize,
     pub max_bulletin_board_response: u32,
+    pub max_pending_evm_txs: usize,
 }
 
 impl Default for SidecarLimits {
@@ -59,6 +75,7 @@ impl Default for SidecarLimits {
             max_known_qcs: 4_096,
             max_request_cache: 8_192,
             max_bulletin_board_response: 1_000,
+            max_pending_evm_txs: 4_096,
         }
     }
 }
@@ -86,6 +103,9 @@ struct Inner {
     current_unix_millis: u64,
     gossip_peers: Vec<String>,
     limits: SidecarLimits,
+    pending_evm_txs: HashMap<[u8; 32], PendingEvmTx>,
+    pending_evm_order: VecDeque<[u8; 32]>,
+    pending_evm_round_robin_offset: usize,
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +147,9 @@ impl SidecarState {
                 current_unix_millis: 0,
                 gossip_peers: Vec::new(),
                 limits: SidecarLimits::default(),
+                pending_evm_txs: HashMap::new(),
+                pending_evm_order: VecDeque::new(),
+                pending_evm_round_robin_offset: 0,
             }),
         }
     }
@@ -155,6 +178,86 @@ impl SidecarState {
     pub fn set_limits(&self, limits: SidecarLimits) {
         let mut inner = self.inner.write().unwrap();
         inner.limits = limits;
+    }
+
+    // -----------------------------------------------------------------------
+    // Pending EVM tx tracking (RETH integration)
+    // -----------------------------------------------------------------------
+
+    /// Register a pending EVM tx. Evicts oldest if at capacity.
+    pub fn register_pending_evm_tx(&self, pending: PendingEvmTx) {
+        let mut inner = self.inner.write().unwrap();
+        let hash = pending.evm_tx_hash;
+
+        if inner.pending_evm_txs.contains_key(&hash) {
+            return;
+        }
+
+        // Evict oldest if at capacity.
+        while inner.pending_evm_txs.len() >= inner.limits.max_pending_evm_txs {
+            if let Some(oldest) = inner.pending_evm_order.pop_front() {
+                inner.pending_evm_txs.remove(&oldest);
+            } else {
+                break;
+            }
+        }
+
+        inner.pending_evm_txs.insert(hash, pending);
+        inner.pending_evm_order.push_back(hash);
+    }
+
+    /// Get up to `limit` pending EVM tx hashes using round-robin offset.
+    pub fn get_pending_evm_tx_hashes(&self, limit: usize) -> Vec<[u8; 32]> {
+        let mut inner = self.inner.write().unwrap();
+        let count = inner.pending_evm_order.len();
+        if count == 0 {
+            return Vec::new();
+        }
+
+        let offset = inner.pending_evm_round_robin_offset % count;
+        let take = limit.min(count);
+        let mut result = Vec::with_capacity(take);
+
+        for i in 0..take {
+            let idx = (offset + i) % count;
+            result.push(inner.pending_evm_order[idx]);
+        }
+
+        inner.pending_evm_round_robin_offset = (offset + take) % count;
+        result
+    }
+
+    /// Clear a confirmed EVM tx: reverse overlay debit, remove from signed_txs
+    /// and pending tracking. Certs/bulletin board are NOT touched.
+    pub fn clear_confirmed_tx(&self, evm_tx_hash: &[u8; 32]) {
+        let mut inner = self.inner.write().unwrap();
+
+        let pending = match inner.pending_evm_txs.remove(evm_tx_hash) {
+            Some(p) => p,
+            None => return,
+        };
+
+        inner.pending_evm_order.retain(|h| h != evm_tx_hash);
+        // Fix round-robin offset if it was beyond the new length.
+        if !inner.pending_evm_order.is_empty() {
+            inner.pending_evm_round_robin_offset %= inner.pending_evm_order.len();
+        } else {
+            inner.pending_evm_round_robin_offset = 0;
+        }
+
+        // Reverse the overlay debit (add amount back to sender).
+        reverse_overlay(&mut inner, &pending);
+
+        // Remove the contention key so the nonce slot no longer blocks.
+        inner
+            .signed_txs
+            .remove(&(pending.sender, pending.nonce_key, pending.nonce_seq));
+    }
+
+    /// Returns the current block height.
+    pub fn current_block_height(&self) -> u64 {
+        let inner = self.inner.read().unwrap();
+        inner.current_block_height
     }
 
     // -----------------------------------------------------------------------
@@ -967,6 +1070,29 @@ fn apply_overlay(inner: &mut Inner, decoded: &DecodedPayment) {
         .entry(decoded.asset)
         .and_modify(|v| *v -= amount)
         .or_insert(-amount);
+}
+
+/// Reverse an overlay debit: add amount back to sender. Does NOT touch base balances.
+fn reverse_overlay(inner: &mut Inner, pending: &PendingEvmTx) {
+    let amount = pending.amount as i128;
+    let entry = inner
+        .overlay
+        .entry(pending.sender)
+        .or_default()
+        .entry(pending.asset)
+        .and_modify(|v| *v += amount)
+        .or_insert(amount);
+    // Clean up zero entries.
+    if *entry == 0 {
+        inner
+            .overlay
+            .get_mut(&pending.sender)
+            .unwrap()
+            .remove(&pending.asset);
+        if inner.overlay[&pending.sender].is_empty() {
+            inner.overlay.remove(&pending.sender);
+        }
+    }
 }
 
 fn store_cert_dedup_by_signer(

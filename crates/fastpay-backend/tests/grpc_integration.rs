@@ -75,7 +75,7 @@ async fn start_sidecar(
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
 
-    let service = FastPaySidecarService::new(Arc::clone(&state));
+    let service = FastPaySidecarService::new(Arc::clone(&state), None);
     tokio::spawn(async move {
         Server::builder()
             .add_service(FastPaySidecarServer::new(service))
