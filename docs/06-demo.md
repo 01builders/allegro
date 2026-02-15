@@ -14,16 +14,14 @@ sequenceDiagram
     participant Carol
     participant Chain
 
-    rect rgb(240, 248, 255)
-        Note over Alice,Chain: Block N (preconfirmation)
-        Alice->>Validators: Pay Bob $10
-        Validators-->>Alice: Certificates
-        Alice->>Alice: Form QC1
-        Bob->>Validators: Pay Carol $10 (parent: QC1)
-        Validators-->>Bob: Certificates
-        Bob->>Bob: Form QC2
-        Carol->>Carol: Verify QC2
-    end
+    Note over Alice,Chain: Block N (preconfirmation)
+    Alice->>Validators: Pay Bob $10
+    Validators-->>Alice: Certificates
+    Alice->>Alice: Form QC1
+    Bob->>Validators: Pay Carol $10 (parent: QC1)
+    Validators-->>Bob: Certificates
+    Bob->>Bob: Form QC2
+    Carol->>Carol: Verify QC2
     Chain->>Chain: Block N+1 settles
 ```
 
