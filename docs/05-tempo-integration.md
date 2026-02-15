@@ -93,11 +93,23 @@ FastPay transactions wrap Tempo transactions with additional metadata. The `temp
 ```rust
 struct FastPayTx {
     chain_id: u64,
-    tempo_tx: Vec<u8>,       // Signed EVM transaction
-    nonce_key: [u8; 32],     // 2D nonce key
-    nonce_seq: u64,          // Sequence within key
-    expiry: Expiry,          // Block height or timestamp
-    parent_qc_hash: [u8; 32] // For chained payments
+    tempo_tx: Vec<u8>,            // Signed EVM transaction
+    nonce_key: [u8; 32],          // 2D nonce key
+    nonce_seq: u64,               // Sequence within key
+    expiry: Expiry,               // Block height or timestamp
+    parent_qc_hash: [u8; 32],     // For chained payments
+    tempo_tx_format: TempoTxFormat,  // Transaction format discriminator
+    overlay: OverlayMetadata,        // Payment metadata for validation
+}
+```
+
+The `tempo_tx_format` field identifies the encoding format of `tempo_tx`. Currently only `EVM_OPAQUE_BYTES_V1` is supported, representing standard Ethereum transaction encoding.
+
+The `overlay` field contains payment metadata that sidecars validate against the decoded `tempo_tx`. This includes the sender, recipient, amount, and asset. Sidecars independently decode the EVM transaction and verify the overlay matches before signing.
+
+```rust
+struct OverlayMetadata {
+    payment: PaymentIntent,  // Sender, recipient, amount, asset
 }
 ```
 

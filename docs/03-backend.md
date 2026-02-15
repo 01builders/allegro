@@ -78,13 +78,30 @@ Content-Type: application/json
   "chain_id": 1337,
   "tempo_tx_hex": "0x...",
   "nonce_key_hex": "0x5b...",
-  "nonce_seq": 0,
   "expiry": { "max_block_height": 100 },
   "client_request_id": "req-123"
 }
 ```
 
-Accepts a pre-signed Tempo transaction. Fans out to sidecars and returns the transaction hash with certificate status.
+Accepts a pre-signed Tempo transaction. The backend decodes the signed EVM transaction to extract payment metadata before forwarding to sidecars.
+
+#### EVM Transaction Decoding
+
+The backend performs the following steps on the `tempo_tx_hex` bytes:
+
+1. Decode the signed transaction using `TxEnvelope::decode_2718_exact()`
+2. Recover the sender address from the ECDSA signature
+3. Validate the recipient has the TIP-20 payment prefix (`0x20c0...`)
+4. Parse the ERC-20 `transfer(address,uint256)` calldata (selector `0xa9059cbb`)
+5. Extract recipient address and transfer amount
+
+The decoded sender, recipient, amount, and asset are included as overlay metadata in the `FastPayTx`. Sidecars independently decode and verify these fields match.
+
+#### Pass-Through Nonce
+
+The `nonce_seq` is extracted directly from the EVM transaction's nonce field. The frontend sets the nonce when signing; the backend passes it through without maintaining a counter. This prevents divergence between the signed transaction nonce and the FastPay protocol nonce.
+
+The backend fans out to sidecars and returns the transaction hash with certificate status.
 
 ```json
 {

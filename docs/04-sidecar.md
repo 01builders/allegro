@@ -20,6 +20,22 @@ rpc SubmitFastPay(SubmitFastPayRequest) returns (SubmitFastPayResponse);
 
 Validates a `FastPayTx` and returns a `ValidatorCertificate` on success. The request includes the transaction and any parent QCs for chained payments. The response contains either a certificate or a rejection with error code.
 
+### SubmitFastPayStream
+
+```protobuf
+rpc SubmitFastPayStream(stream SubmitFastPayRequest) returns (stream SubmitFastPayEvent);
+```
+
+Bidirectional streaming variant of SubmitFastPay. The client sends transaction requests and receives lifecycle events. Each event includes the current `block_height` for expiry tracking.
+
+| Event Type | Description |
+|------------|-------------|
+| ACCEPTED | Transaction passed initial validation |
+| Certificate | Validator certificate issued |
+| CERTIFIED | QC threshold reached (if applicable) |
+
+Streaming reduces round-trips for clients submitting multiple transactions.
+
 ### GetBulletinBoard
 
 ```protobuf
@@ -69,6 +85,24 @@ Certificates are stored by `tx_hash`. Each transaction may have certificates fro
 ### Nonce Sequences
 
 The `nonce_sequences` map tracks the next expected nonce for each `(sender, nonce_key)` pair. Transactions must use exactly the next sequence number. Gaps and out-of-order submissions are rejected.
+
+### Request Idempotency
+
+The sidecar caches responses by `client_request_id` to support idempotent retries. If a client resubmits a request with the same ID, the cached response is returned without re-validation. The cache uses LRU eviction when `max_request_cache` is exceeded.
+
+## Safety Limits
+
+The sidecar enforces memory bounds to prevent resource exhaustion.
+
+| Limit | Default | Purpose |
+|-------|---------|---------|
+| `max_total_certs` | 10,000 | Certificate store capacity |
+| `max_known_qcs` | 4,096 | QC cache capacity |
+| `max_request_cache` | 8,192 | Idempotency cache size |
+| `max_bulletin_board_response` | 1,000 | Max certificates per query |
+| `max_pending_evm_txs` | 4,096 | RETH forwarding queue |
+
+When limits are exceeded, the oldest entries are evicted using LRU ordering.
 
 ## Validation Flow
 
@@ -121,6 +155,42 @@ loop {
 
 Ingested certificates are validated and deduplicated by signer. The gossip interval and peer list are configurable at startup.
 
+## RETH Node Integration
+
+The sidecar optionally connects to a RETH node via WebSocket for chain state and transaction forwarding. This feature is enabled by providing `--reth-ws-url` at startup.
+
+### Block Subscription
+
+The sidecar subscribes to new block headers through the WebSocket connection. Each block updates the local chain head for expiry checking. Confirmed transactions are cleared from the overlay to free balance for new payments.
+
+```mermaid
+sequenceDiagram
+    participant Sidecar
+    participant RETH as RETH Node
+
+    Sidecar->>RETH: eth_subscribe(newHeads)
+    RETH-->>Sidecar: Block header
+    Sidecar->>Sidecar: Update chain head
+    Sidecar->>RETH: eth_getTransactionReceipt (batch)
+    RETH-->>Sidecar: Receipts
+    Sidecar->>Sidecar: Clear confirmed txs from overlay
+```
+
+### Transaction Forwarding
+
+After issuing a certificate, the sidecar forwards the signed EVM transaction to the RETH mempool. This enables validators to include certified transactions in blocks.
+
+```rust
+// Forwarding occurs after successful certification
+reth.send_raw_transaction(raw_evm_tx).await?;
+```
+
+The forwarding queue has bounded capacity. If RETH is unavailable, transactions accumulate until the queue limit is reached.
+
+### Reconnection
+
+Both the block subscription and transaction submission tasks implement exponential backoff reconnection. The base delay is 500ms with a maximum of 30 seconds. Each task reconnects independently to maximize availability.
+
 ## Configuration
 
 The sidecar binary accepts configuration through command-line arguments or environment variables.
@@ -133,6 +203,8 @@ The sidecar binary accepts configuration through command-line arguments or envir
 | `--epoch` | Current validator epoch |
 | `--peers` | Comma-separated list of peer sidecar endpoints |
 | `--gossip-interval` | Interval between gossip pulls |
+| `--reth-ws-url` | Optional RETH WebSocket endpoint for chain integration |
+| `--max-pending-txs` | RETH forwarding queue capacity (default 4096) |
 
 ## Related Documentation
 
