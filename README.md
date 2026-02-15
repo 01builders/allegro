@@ -1,6 +1,6 @@
 # Allegro
 
-Blockchain finality requires waiting for validators to come to consensus. This latency is unsuitable for retail payments where sub-second confirmation is the expected user experience. Allegro is a decentralized private mempool, run as a Tempo validator sidecar. When a user submits a payment, validators sign certificates attesting to the transaction and send them back as callbacks. Once the user has collected certificates from 2f+1 validators out of 3f+1, they can construct a Quorum Certificate that proves the payment will settle. Recipients can spend funds immediately by presenting the QC as proof of incoming payment, enabling chained payments that complete with cryptographic guarantees before either settles on-chain.
+Blockchain finality requires waiting for validators to come to consensus. This latency is sub-optimal for retail payments where sub-second confirmation is the expected user experience and commercial entities operate at scale. Allegro is a decentralized private mempool, run as a Tempo validator sidecar. When a user submits a payment, validators sign certificates attesting to transaction validity and send them as callbacks. Once the user has collected certificates from 2f+1 validators, they can construct a Quorum Certificate that proves the payment will settle. Recipients can spend funds immediately by presenting the QC as proof of incoming payment, enabling chained payments that complete with cryptographic guarantees before either settles on-chain.
 
 ## Documentation
 
