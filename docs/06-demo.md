@@ -50,10 +50,10 @@ The Allegro service aggregates certificates and provides the web UI.
 
 The demo executes two payments in sequence.
 
-1. Alice pays Bob $10
-2. Bob pays Carol $10 using the QC from payment 1 as parent
+1. Alice pays Bob 10 USD
+2. Bob pays Carol 10 USD using the QC from payment 1 as parent
 
-After both payments complete, the balances are Alice $5, Bob $5, Carol $15. Bob's balance remains $5 because he received $10 and immediately spent $10.
+After both payments complete, the balances are Alice 5 USD, Bob 5 USD, Carol 15 USD. Bob's balance remains 5 USD because he received 10 USD and immediately spent 10 USD.
 
 ## Demo Configuration
 
