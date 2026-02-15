@@ -28,7 +28,7 @@ flowchart TB
     end
 
     Clients --> Validators
-    Validators <--> Validators
+    Dave <--> Edgar
     Backend --> Validators
     REST --> Backend
     Web --> REST
