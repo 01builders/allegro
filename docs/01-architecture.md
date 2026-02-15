@@ -1,6 +1,6 @@
 # System Architecture
 
-FastPay is a preconfirmation payment system for the Tempo blockchain. Users complete chained payments before block finalization using validator-signed certificates that aggregate into Quorum Certificates.
+Allegro is a preconfirmation payment system for the Tempo blockchain. Users complete chained payments before block finalization using validator-signed certificates that aggregate into Quorum Certificates.
 
 ## Overview
 
@@ -66,7 +66,7 @@ This sequence shows the happy path for a single payment. The sender submits to m
 
 Recipients can spend received funds before block settlement using parent QC references. Bob receives a payment from Alice and obtains the QC. Bob includes the QC hash as `parent_qc_hash` in a new payment to Carol. Sidecars validate the parent QC and credit Bob with the incoming amount.
 
-This enables instant chained payments without waiting for on-chain confirmation. The contention key `(sender, nonce_key, nonce_seq)` prevents double-spending at the FastPay layer.
+This enables instant chained payments without waiting for on-chain confirmation. The contention key `(sender, nonce_key, nonce_seq)` prevents double-spending at the Allegro layer.
 
 ## Crate Structure
 

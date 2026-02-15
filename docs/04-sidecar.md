@@ -1,6 +1,6 @@
 # Validator Sidecar
 
-The validator sidecar is a gRPC service that manages FastPay certificates for a single validator. It validates incoming transactions, issues signed certificates, and maintains a bulletin board for certificate discovery.
+The validator sidecar is a gRPC service that manages Allegro certificates for a single validator. It validates incoming transactions, issues signed certificates, and maintains a bulletin board for certificate discovery.
 
 ## Purpose
 

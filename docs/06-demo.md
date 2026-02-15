@@ -1,6 +1,6 @@
 # Demo Scenario
 
-This document describes the FastPay demonstration scenario showing chained payments completing before block finalization.
+This document describes the Allegro demonstration scenario showing chained payments completing before block finalization.
 
 ## Overview
 
@@ -39,14 +39,14 @@ Three user clients participate in the payment flow.
 | Bob | $5 | Receives from Alice, pays Carol |
 | Carol | $5 | Receives final payment |
 
-Two validators run FastPay sidecars.
+Two validators run Allegro sidecars.
 
 | Validator | Role |
 |-----------|------|
 | Dave | Issues certificates, runs sidecar |
 | Edgar | Issues certificates, runs sidecar |
 
-The FastPay service aggregates certificates and provides the web UI.
+The Allegro service aggregates certificates and provides the web UI.
 
 ## Payment Flow
 
@@ -70,7 +70,7 @@ The demo uses a 2-of-2 threshold. Both Dave and Edgar must sign for a QC to form
 
 ## Detailed Information Flow
 
-This diagram shows the complete flow with sidecars wired to Tempo nodes and the FastPay service aggregating certificates.
+This diagram shows the complete flow with sidecars wired to Tempo nodes and the Allegro service aggregating certificates.
 
 ```mermaid
 sequenceDiagram
@@ -78,7 +78,7 @@ sequenceDiagram
   participant A as Alice Client
   participant B as Bob Client
   participant C as Carol Client
-  participant S as FastPay Service
+  participant S as Allegro Service
   participant D as Dave Sidecar
   participant E as Edgar Sidecar
   participant ND as Dave Tempo Node
@@ -127,7 +127,7 @@ The key observation is that Carol sees the QC-cleared payment before the block h
 The demo UI displays the following to verify correct operation.
 
 1. Current block height from chain polling
-2. List of FastPay transactions with their stage (ACCEPTED, CERTIFIED, INCLUDED)
+2. List of Allegro transactions with their stage (ACCEPTED, CERTIFIED, INCLUDED)
 3. Timestamp showing QC formation occurred before block height change
 
 The successful demo shows both T1 and T2 reach CERTIFIED stage while the block height remains constant.
@@ -136,6 +136,6 @@ The successful demo shows both T1 and T2 reach CERTIFIED stage while the block h
 
 See [System Architecture](01-architecture.md) for the overall system design.
 
-See [Aggregator Backend](03-backend.md) for the FastPay service implementation.
+See [Aggregator Backend](03-backend.md) for the Allegro service implementation.
 
 See [Tempo Integration](05-tempo-integration.md) for sub-block transaction routing.

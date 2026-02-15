@@ -1,6 +1,6 @@
 # User Client
 
-The `fastpay-user-client` crate provides a Rust library for wallet interactions with FastPay. It handles transaction construction, certificate collection, QC assembly, and wallet state management.
+The `fastpay-user-client` crate provides a Rust library for wallet interactions with Allegro. It handles transaction construction, certificate collection, QC assembly, and wallet state management.
 
 ## Overview
 

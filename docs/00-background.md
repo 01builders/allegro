@@ -1,12 +1,12 @@
 # Background
 
-This document describes the problem FastPay solves, the distributed systems guarantees it provides, and how we adapt the protocol for the Tempo blockchain. The protocol is based on the FastPay paper by Baudet, Danezis, and Sonnino [1].
+This document describes the problem that the original FastPay solves, the distributed systems guarantees it provides, and how we adapt the protocol for the Tempo blockchain. Our protocol, Allegro, takes inspiration from the FastPay paper by Baudet, Danezis, and Sonnino [1].
 
 ## The Problem
 
 Blockchain-based settlement systems face a fundamental latency problem. Traditional consensus protocols require multiple rounds of communication to establish a total ordering of transactions. Even optimized BFT protocols achieve finality in seconds. This latency is acceptable for large-value transfers but unsuitable for point-of-sale retail payments.
 
-The core insight of FastPay is that payment transactions have special semantics. Payments are commutative. Crediting an account with $10 then $20 produces the same result as crediting $20 then $10. This property enables a weaker primitive that provides safety without total ordering.
+The core idea is that payment transactions have special semantics. Payments are commutative. Crediting an account with $10 then $20 produces the same result as crediting $20 then $10. This property enables a weaker primitive that provides safety without total ordering.
 
 ## Byzantine Consistent Broadcast
 
@@ -52,29 +52,29 @@ FastPay operates as a layer above the mempool but below consensus. The mempool p
 
 The key benefit is that recipients can accept certificates as payment confirmation without waiting for block finality. The certificate is cryptographic proof that settlement will occur. The certified transaction cannot be rejected at the consensus layer.
 
-## Adapting for Tempo
+## Allegro: FastPay for Tempo
 
-Tempo is an EVM-compatible blockchain built on reth and commonware. We adapt FastPay to leverage Tempo-specific features.
+Allegro adapts the FastPay protocol for Tempo, an EVM-compatible blockchain built on reth and commonware. The adaptation leverages Tempo-specific features while preserving the core protocol guarantees.
 
 ### 2D Nonce Model
 
 Tempo uses two-dimensional nonces instead of a single sequence counter. Each account has a mapping from `nonce_key` to sequence number. The first dimension identifies a nonce sequence. The second dimension is the sequence number within that key.
 
-This maps naturally to FastPay's contention model. The contention key becomes the tuple `(sender, nonce_key, nonce_seq)`. FastPay transactions use dedicated nonce keys prefixed with `0x5b`. This avoids interference with regular user transactions on other nonce keys.
+This maps naturally to FastPay's contention model. The contention key becomes the tuple `(sender, nonce_key, nonce_seq)`. Allegro transactions use dedicated nonce keys prefixed with `0x5b`. This avoids interference with regular user transactions on other nonce keys.
 
 ### Sub-block Transactions
 
 Tempo blocks include a sub-block section for validator-specific transactions. Transactions with nonce keys starting with `0x5b` are routed to this section. They bypass the public mempool.
 
-FastPay leverages this for certified transaction settlement. The user obtains a certificate from validator sidecars. The sidecar forwards the certified transaction to the sub-block pipeline. The transaction appears in the next block and settlement completes.
+Allegro leverages this for certified transaction settlement. The user obtains a certificate from validator sidecars. The sidecar forwards the certified transaction to the sub-block pipeline. The transaction appears in the next block and settlement completes.
 
 ### TIP-20 Payment Restriction
 
-FastPay on Tempo restricts transactions to TIP-20 payment tokens. These are addresses prefixed with `0x20c0`. This restriction ensures FastPay handles only payment semantics. Arbitrary contract execution is not permitted. This preserves the commutative properties that make consistent broadcast sufficient.
+Allegro restricts transactions to TIP-20 payment tokens. These are addresses prefixed with `0x20c0`. This restriction ensures Allegro handles only payment semantics. Arbitrary contract execution is not permitted. This preserves the commutative properties that make consistent broadcast sufficient.
 
 ## Chained Payments
 
-FastPay supports chained spending where a recipient spends received funds immediately. The recipient includes the parent Quorum Certificate hash in their transaction. Validators credit the recipient with the incoming amount before validating their outgoing payment.
+Allegro supports chained spending where a recipient spends received funds immediately. The recipient includes the parent Quorum Certificate hash in their transaction. Validators credit the recipient with the incoming amount before validating their outgoing payment.
 
 Alice pays Bob $10 and obtains QC1. Bob presents QC1 as `parent_qc_hash` in his payment to Carol. Validators credit Bob with $10 from QC1 before validating his payment. Bob pays Carol $10 and obtains QC2. Both payments complete before either settles on-chain.
 

@@ -1,6 +1,6 @@
 # Tempo Integration
 
-FastPay integrates with the Tempo blockchain through its sub-block transaction system. This document covers the 2D nonce model, sub-block routing, and how FastPay layers on top of existing Tempo infrastructure.
+Allegro integrates with the Tempo blockchain through its sub-block transaction system. This document covers the 2D nonce model, sub-block routing, and how Allegro layers on top of existing Tempo infrastructure.
 
 ## 2D Nonce System
 
@@ -13,13 +13,13 @@ Tempo uses a two-dimensional nonce model instead of a single sequential counter.
 | `U256::MAX` | Expiring nonces |
 | `0x5b...` prefix | Reserved for sub-block transactions |
 
-This model allows multiple in-flight transactions without nonce conflicts. FastPay uses dedicated nonce keys to avoid interfering with regular user transactions.
+This model allows multiple in-flight transactions without nonce conflicts. Allegro uses dedicated nonce keys to avoid interfering with regular user transactions.
 
 ### Nonce Key Economics
 
-Creating a new nonce key incurs state creation costs under TIP-1000. Each new key requires approximately 5,000 gas for the initial storage slot. Clients should reuse a fixed set of FastPay nonce keys rather than generating random keys per transaction.
+Creating a new nonce key incurs state creation costs under TIP-1000. Each new key requires approximately 5,000 gas for the initial storage slot. Clients should reuse a fixed set of Allegro nonce keys rather than generating random keys per transaction.
 
-The recommended pattern is to allocate one or a few nonce keys for FastPay and increment the sequence number within each key. This amortizes the state creation cost across many transactions.
+The recommended pattern is to allocate one or a few nonce keys for Allegro and increment the sequence number within each key. This amortizes the state creation cost across many transactions.
 
 ## Sub-block Transactions
 
@@ -73,13 +73,13 @@ Tempo allocates a portion of block gas to sub-blocks.
 
 Each validator receives an equal share of the shared pool. The formula is `shared_gas / num_validators`. Unused gas flows to the gas incentive pool.
 
-## FastPay Layer
+## Allegro Layer
 
-FastPay adds a preconfirmation layer on top of the sub-block system. Validators issue certificates before submitting transactions to the chain. Users can rely on certificates without waiting for block inclusion.
+Allegro adds a preconfirmation layer on top of the sub-block system. Validators issue certificates before submitting transactions to the chain. Users can rely on certificates without waiting for block inclusion.
 
 The integration points are as follows.
 
-1. FastPay sidecars validate transactions and issue certificates
+1. Allegro sidecars validate transactions and issue certificates
 2. Certified transactions are submitted through the sub-block system
 3. The `0x5b` prefix routes transactions to validator sub-blocks
 4. Block inclusion provides final settlement
@@ -88,7 +88,7 @@ This architecture separates preconfirmation from settlement. Certificates provid
 
 ## Transaction Format
 
-FastPay transactions wrap Tempo transactions with additional metadata. The `tempo_tx` field contains signed EVM transaction bytes. The `overlay` field provides payment metadata for validation.
+Allegro transactions wrap Tempo transactions with additional metadata. The `tempo_tx` field contains signed EVM transaction bytes. The `overlay` field provides payment metadata for validation.
 
 ```rust
 struct FastPayTx {
@@ -113,7 +113,7 @@ struct OverlayMetadata {
 }
 ```
 
-The `tempo_tx` bytes use standard Ethereum encoding. FastPay currently supports ERC-20 transfer calls to TIP-20 payment addresses.
+The `tempo_tx` bytes use standard Ethereum encoding. Allegro currently supports ERC-20 transfer calls to TIP-20 payment addresses.
 
 ## TIP-20 Payment Format
 
@@ -124,11 +124,11 @@ Token address: 0x20c0...
 Call data: transfer(address,uint256) with selector 0xa9059cbb
 ```
 
-FastPay validates that the transaction target has the TIP-20 prefix. This restricts FastPay to payment transactions and prevents arbitrary contract execution.
+Allegro validates that the transaction target has the TIP-20 prefix. This restricts Allegro to payment transactions and prevents arbitrary contract execution.
 
 ## SDK Integration
 
-The `tempo-alloy` Rust crate provides Tempo-specific transaction types. FastPay uses `alloy` for transaction encoding and signature recovery. The user client constructs signed transactions using these libraries.
+The `tempo-alloy` Rust crate provides Tempo-specific transaction types. Allegro uses `alloy` for transaction encoding and signature recovery. The user client constructs signed transactions using these libraries.
 
 ```rust
 let tx = TxLegacy {
@@ -147,7 +147,7 @@ This example shows transaction construction with `alloy`. The signed bytes are i
 
 ## Related Documentation
 
-See [System Architecture](01-architecture.md) for the overall FastPay design.
+See [System Architecture](01-architecture.md) for the overall Allegro design.
 
 See [Validator Sidecar](04-sidecar.md) for certificate issuance.
 

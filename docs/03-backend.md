@@ -99,7 +99,7 @@ The decoded sender, recipient, amount, and asset are included as overlay metadat
 
 #### Pass-Through Nonce
 
-The `nonce_seq` is extracted directly from the EVM transaction's nonce field. The frontend sets the nonce when signing; the backend passes it through without maintaining a counter. This prevents divergence between the signed transaction nonce and the FastPay protocol nonce.
+The `nonce_seq` is extracted directly from the EVM transaction's nonce field. The frontend sets the nonce when signing; the backend passes it through without maintaining a counter. This prevents divergence between the signed transaction nonce and the Allegro protocol nonce.
 
 The backend fans out to sidecars and returns the transaction hash with certificate status.
 
