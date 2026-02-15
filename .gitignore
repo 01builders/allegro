@@ -34,3 +34,10 @@ apps/web/node_modules/
 apps/web/dist/
 apps/web/.vite/
 apps/web/bun.lockb
+
+# mdbook build output and transient assets
+docs/book/
+docs/SUMMARY.md
+mermaid.min.js
+mermaid-init.js
+theme/

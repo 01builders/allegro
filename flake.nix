@@ -38,6 +38,12 @@
           protobuf
           protoc-gen-prost
           protoc-gen-tonic
+          mdbook
+          mdbook-mermaid
+          coreutils
+          findutils
+          gawk
+          gnused
         ];
 
         buildInputs =
