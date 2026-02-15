@@ -7,15 +7,24 @@ This document describes the FastPay demonstration scenario showing chained payme
 The demo involves five actors completing two chained payments within a single block interval. Alice pays Bob, then Bob immediately spends those funds to pay Carol. Both payments achieve QC-cleared status before the next block height advances.
 
 ```mermaid
-flowchart LR
-    subgraph Block N
-        A[Alice pays Bob $10] --> B[Validators sign T1]
-        B --> C[QC1 formed]
-        C --> D[Bob pays Carol $10<br/>with QC1 as parent]
-        D --> E[Validators sign T2]
-        E --> F[QC2 formed]
+sequenceDiagram
+    participant Alice
+    participant Validators
+    participant Bob
+    participant Carol
+    participant Chain
+
+    rect rgb(240, 248, 255)
+        Note over Alice,Chain: Block N (preconfirmation)
+        Alice->>Validators: Pay Bob $10
+        Validators-->>Alice: Certificates
+        Alice->>Alice: Form QC1
+        Bob->>Validators: Pay Carol $10 (parent: QC1)
+        Validators-->>Bob: Certificates
+        Bob->>Bob: Form QC2
+        Carol->>Carol: Verify QC2
     end
-    F --> G[Block N+1<br/>settles on-chain]
+    Chain->>Chain: Block N+1 settles
 ```
 
 Both payments complete with QC confirmation before the block height advances, demonstrating the preconfirmation property.
@@ -59,7 +68,7 @@ block_time_seconds = 5
 
 The demo uses a 2-of-2 threshold. Both Dave and Edgar must sign for a QC to form.
 
-## Phase 2 Information Flow
+## Detailed Information Flow
 
 This diagram shows the complete flow with sidecars wired to Tempo nodes and the FastPay service aggregating certificates.
 
