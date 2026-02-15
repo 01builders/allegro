@@ -8,6 +8,6 @@ Users cannot spend received funds until the sending transaction is finalized. A 
 
 ## How does Allegro solve this problem?
 
-Allegro provides cryptographic payment confirmation without waiting for block finality. When a user submits a payment, validators sign certificates attesting to the transaction. Once a threshold of validators have signed, the certificates form a Quorum Certificate that proves the payment will settle.
+Allegro is a decentralized private mempool run as a sidecar to each validator. When a user submits a payment, validators sign certificates attesting to the transaction. Once a threshold of validators have signed, the certificates form a Quorum Certificate that proves the payment will settle.
 
 Recipients can spend funds immediately by presenting the QC as proof of incoming payment. This enables chained payments where Alice pays Bob and Bob pays Carol within a single block interval. Both payments complete with cryptographic guarantees before either settles on-chain.
