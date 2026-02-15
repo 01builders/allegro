@@ -75,16 +75,38 @@ async function fetchJson(url: string): Promise<unknown> {
 }
 
 export async function getChainHead(): Promise<ChainHead> {
-  const raw = await fetchJson(`${config.backendUrl}/api/v1/chain/head`);
-  const parsed = chainHeadSchema.parse(raw);
-  const blockHeight = Number(parsed.block_height);
-  const unixMillis = Number(parsed.unix_millis);
-  if (!Number.isSafeInteger(blockHeight) || !Number.isSafeInteger(unixMillis)) {
-    throw new Error("Chain head values exceed safe integer range");
-  }
+  // Query the Tempo RPC directly — avoids the backend→sidecar→RETH WS chain.
+  const res = await fetch(config.tempoRpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "eth_getBlockByNumber",
+      params: ["latest", false],
+    }),
+  });
+  const json = (await res.json()) as {
+    result?: {
+      number?: string;
+      hash?: string;
+      timestamp?: string;
+      timestampMillis?: string;
+    };
+    error?: { message: string };
+  };
+  if (json.error) throw new Error(json.error.message);
+  const block = json.result;
+  if (!block) throw new Error("no block returned");
+
+  const blockHeight = Number(block.number ?? "0x0");
+  const unixMillis = block.timestampMillis
+    ? Number(block.timestampMillis)
+    : Number(block.timestamp ?? "0x0") * 1000;
+
   return {
     block_height: blockHeight,
-    block_hash: parsed.block_hash,
+    block_hash: block.hash ?? "0x",
     unix_millis: unixMillis,
   };
 }

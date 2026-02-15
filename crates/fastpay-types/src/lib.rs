@@ -2,6 +2,7 @@
 
 pub mod error;
 pub mod ids;
+pub mod tempo_tx;
 pub mod traits;
 
 pub use error::{AssemblyError, CryptoError, ValidationError};

@@ -60,11 +60,16 @@ export function PaymentForm({
         ? pad(stringToHex(memo.trim()), { size: 32 })
         : undefined;
 
+    // nonceKey triggers viem's Tempo-native tx (type 0x76) instead of legacy EVM.
+    // uint192 max is 24 bytes; upper 8 bytes of this 32-byte value will be truncated.
+    const FASTPAY_NONCE_KEY = BigInt("0x" + "5b".repeat(24));
+
     transfer.mutate(
       {
         amount: parsedAmount,
         to: recipient as `0x${string}`,
         token: selectedToken,
+        nonceKey: FASTPAY_NONCE_KEY,
         ...(memoHex !== undefined ? { memo: memoHex } : {}),
       },
       {

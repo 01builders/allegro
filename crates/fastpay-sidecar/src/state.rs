@@ -525,6 +525,15 @@ fn prepare_submission(
     let decoded = overlay_payment_from_fastpay_tx(&tx)?;
     let payload = match tx_format {
         v1::TempoTxFormat::EvmOpaqueBytesV1 => decode_payment_from_tempo_tx(&tempo_tx.data)?,
+        v1::TempoTxFormat::TempoNativeV1 => {
+            let d = fastpay_types::tempo_tx::decode_tempo_native_tx(&tempo_tx.data)
+                .map_err(|e| reject(v1::RejectCode::InvalidFormat, e))?;
+            DecodedTempoPayload {
+                recipient: d.recipient,
+                amount: d.amount,
+                asset: d.asset,
+            }
+        }
         _ => {
             return Err(reject(
                 v1::RejectCode::InvalidFormat,
@@ -533,7 +542,7 @@ fn prepare_submission(
         }
     };
 
-    let recovered_sender = recover_sender_from_tempo_tx(&tempo_tx.data)?;
+    let recovered_sender = recover_sender_from_tempo_tx(&tempo_tx.data, tx_format)?;
     if recovered_sender != decoded.sender {
         return Err(reject(
             v1::RejectCode::InvalidFormat,
@@ -681,7 +690,14 @@ fn payment_intent_to_decoded(
     })
 }
 
-fn recover_sender_from_tempo_tx(bytes: &[u8]) -> Result<Address, v1::RejectReason> {
+fn recover_sender_from_tempo_tx(
+    bytes: &[u8],
+    format: v1::TempoTxFormat,
+) -> Result<Address, v1::RejectReason> {
+    if format == v1::TempoTxFormat::TempoNativeV1 {
+        return fastpay_types::tempo_tx::recover_tempo_native_sender(bytes)
+            .map_err(|e| reject(v1::RejectCode::InvalidFormat, e));
+    }
     let envelope = TxEnvelope::decode_2718_exact(bytes).map_err(|_| {
         reject(
             v1::RejectCode::InvalidFormat,

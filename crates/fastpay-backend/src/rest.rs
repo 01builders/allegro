@@ -66,11 +66,30 @@ struct DecodedPayment {
     recipient: [u8; 20],
     amount: u64,
     asset: [u8; 20],
-    /// The EVM tx nonce, used as nonce_seq in the FastPay 2D nonce.
+    /// 2D nonce key — from Tempo tx field or hardcoded for legacy EVM.
+    nonce_key: [u8; 32],
+    /// The nonce sequence (EVM tx nonce or Tempo 2D nonce_seq).
     nonce_seq: u64,
+    /// Whether the source tx was Tempo native (0x76).
+    is_tempo_native: bool,
 }
 
 fn decode_signed_tx(bytes: &[u8]) -> Result<DecodedPayment, String> {
+    // Tempo native tx (type 0x76): use shared decoder
+    if fastpay_types::tempo_tx::is_tempo_native(bytes) {
+        let decoded = fastpay_types::tempo_tx::decode_tempo_native_tx(bytes)?;
+        return Ok(DecodedPayment {
+            sender: *decoded.sender.as_bytes(),
+            recipient: *decoded.recipient.as_bytes(),
+            amount: decoded.amount,
+            asset: *decoded.asset.as_bytes(),
+            nonce_key: *decoded.nonce_key.as_bytes(),
+            nonce_seq: decoded.nonce_seq,
+            is_tempo_native: true,
+        });
+    }
+
+    // Legacy EVM path
     let envelope =
         TxEnvelope::decode_2718_exact(bytes).map_err(|e| format!("invalid EVM tx: {e}"))?;
 
@@ -153,7 +172,9 @@ fn decode_signed_tx(bytes: &[u8]) -> Result<DecodedPayment, String> {
         recipient,
         amount,
         asset,
+        nonce_key: DEMO_NONCE_KEY,
         nonce_seq,
+        is_tempo_native: false,
     })
 }
 
@@ -215,7 +236,7 @@ async fn submit_raw_tx(
     let recipient = Address::new(decoded.recipient);
     let asset = AssetId::new(decoded.asset);
     let amount = decoded.amount;
-    let nonce_key = NonceKey::new(DEMO_NONCE_KEY);
+    let nonce_key = NonceKey::new(decoded.nonce_key);
     let nonce_seq = decoded.nonce_seq;
 
     let now_ms = std::time::SystemTime::now()
@@ -266,7 +287,7 @@ async fn submit_raw_tx(
         }),
         intent: Some(intent.clone()),
         nonce: Some(v1::Nonce2D {
-            nonce_key_be: DEMO_NONCE_KEY.to_vec(),
+            nonce_key_be: decoded.nonce_key.to_vec(),
             nonce_seq,
         }),
         expiry: Some(match expiry {
@@ -279,7 +300,11 @@ async fn submit_raw_tx(
         }),
         parent_qc_hash: Vec::new(),
         client_request_id: String::new(),
-        tempo_tx_format: v1::TempoTxFormat::EvmOpaqueBytesV1 as i32,
+        tempo_tx_format: if decoded.is_tempo_native {
+            v1::TempoTxFormat::TempoNativeV1 as i32
+        } else {
+            v1::TempoTxFormat::EvmOpaqueBytesV1 as i32
+        },
         overlay: Some(v1::OverlayMetadata {
             payment: Some(intent),
         }),
